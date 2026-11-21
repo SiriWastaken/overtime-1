@@ -15,10 +15,10 @@ import type { Forecast, Predictor } from './predictor.ts';
 import { inferRules, type RuleFits } from './rules.ts';
 import type { ComponentSpec, SeasonSpec } from './seasons.ts';
 import { seasonSpec } from './seasons.ts';
-import { normalCdf, Z80 } from './stats.ts';
+import { normalCdf, solveSpd, Z80 } from './stats.ts';
 import type { Color, MatchRow, SeasonData } from './types.ts';
 
-export const MODEL_VERSION = 'xpts-1.0.0';
+export const MODEL_VERSION = 'xpts-1.2.0';
 
 export interface ModelOptions {
   /** Between-event random-walk variance, as a fraction of the season's team spread τ². */
@@ -44,7 +44,8 @@ export const DEFAULT_OPTIONS: ModelOptions = {
   q: 0.01,
   carry: true,
   drift: true,
-  defense: false,
+  // On since 1.1.0: improved log loss and Brier in 2025 (chosen) and again in 2026 (confirmed).
+  defense: true,
   defenseFrac: 0.1,
   minObs: 60,
   halfLife: 1500,
@@ -76,6 +77,57 @@ export class NoiseEstimator {
   }
 }
 
+/**
+ * Prior-free estimate of a component's noise variance σ²: within each event, fit unregularised least squares
+ * (OPR-style) to the observations so far and pool the residual sums of squares with a degrees-of-freedom
+ * correction, σ² = Σ RSS / Σ (N − p). Unlike innovation-based estimates this cannot absorb team-to-team
+ * variance when the prior spread is wrong, so τ² (derived from it) cannot collapse.
+ */
+class PooledOls {
+  private readonly events = new Map<string, { rows: { cols: number[]; y: number }[]; cols: Map<string, number>; rss: number; dof: number; fitAt: number }>();
+  rss = 0;
+  dof = 0;
+  add(eventKey: string, teams: string[], y: number) {
+    let e = this.events.get(eventKey);
+    if (!e) this.events.set(eventKey, (e = { rows: [], cols: new Map(), rss: 0, dof: 0, fitAt: 0 }));
+    const cols = teams.map((t) => {
+      let i = e!.cols.get(t);
+      if (i === undefined) e!.cols.set(t, (i = e!.cols.size));
+      return i;
+    });
+    e.rows.push({ cols, y });
+    const p = e.cols.size;
+    const N = e.rows.length;
+    if (N >= 1.5 * p && N - e.fitAt >= 10) this.refit(e, p);
+  }
+  private refit(e: { rows: { cols: number[]; y: number }[]; rss: number; dof: number; fitAt: number }, p: number) {
+    const A = new Float64Array(p * p);
+    const b = new Float64Array(p);
+    for (const r of e.rows)
+      for (const i of r.cols) {
+        b[i] += r.y;
+        for (const j of r.cols) A[i * p + j] += 1;
+      }
+    for (let i = 0; i < p; i++) A[i * p + i] += 1e-6;
+    const beta = solveSpd(A, b, p);
+    if (!beta) return;
+    let rss = 0;
+    for (const r of e.rows) {
+      let yh = 0;
+      for (const i of r.cols) yh += beta[i];
+      rss += (r.y - yh) ** 2;
+    }
+    this.rss += rss - e.rss;
+    this.dof += e.rows.length - p - e.dof;
+    e.rss = rss;
+    e.dof = e.rows.length - p;
+    e.fitAt = e.rows.length;
+  }
+  get sigma2(): number | null {
+    return this.dof >= 30 ? this.rss / this.dof : null;
+  }
+}
+
 /** Online estimates of one component's season-level parameters. */
 class Hyper {
   n = 0;
@@ -83,46 +135,85 @@ class Hyper {
   V = 0; // variance of an observation about k·μ
   readonly k: number;
   private readonly halfLife: number;
-  private readonly noise: NoiseEstimator;
+  readonly ols = new PooledOls();
   constructor(k: number, halfLife: number) {
     this.k = k;
     this.halfLife = halfLife;
-    this.noise = new NoiseEstimator(halfLife);
   }
-  observe(y: number) {
+  observe(y: number, eventKey: string, teams: string[]) {
     this.n++;
     const a = Math.max(1 / this.n, Math.LN2 / this.halfLife);
     const d = y - this.k * this.mu;
     this.V += a * (d * d - this.V);
     this.mu += (a * d) / this.k;
+    this.ols.add(eventKey, teams, y);
   }
-  innovation(r: number, paramVar: number) {
-    this.noise.add(r, paramVar, this.sigma2);
+  get ready() {
+    return this.ols.sigma2 !== null;
   }
   get sigma2() {
-    return this.noise.value(Math.max(this.V / 2, 1), 20);
+    return Math.max(this.ols.sigma2 ?? this.V / 2, 0.01 * this.V, 0.05);
   }
   get tau2() {
-    return Math.max((this.V - this.sigma2) / this.k, (0.02 * this.V) / this.k, 0.25);
+    return Math.max((this.V - this.sigma2) / this.k, (0.02 * this.V) / this.k, 0.05);
   }
 }
 
-/** Online estimate of an aggregate residual variance (alliance total or margin) from the model's own forecasts. */
-class Residual {
+/**
+ * Aggregate residual variance (alliance total or margin) that grows with the scoring level:
+ *   Var(r) = paramVar + v · g(μ),  g(μ) = (max(μ, μ̄/4) / μ̄)^p.
+ * p is the slope of an exponentially discounted regression of log r² on log μ (higher-scoring alliances are
+ * measurably noisier); v is the ML-weighted noise on residuals rescaled by g. All from past forecasts only.
+ */
+class ScaledResidual {
   private readonly est: NoiseEstimator;
+  private readonly decay: number;
+  private sx = 0;
+  private sy = 0;
+  private sxx = 0;
+  private sxy = 0;
+  private w = 0;
+  private level = 0;
+  private nLevel = 0;
   private fallback = 1;
   constructor(halfLife: number) {
     this.est = new NoiseEstimator(halfLife);
+    this.decay = Math.pow(2, -1 / halfLife);
   }
   get n() {
     return this.est.n;
   }
-  add(r: number, paramVar: number) {
-    this.est.add(r, paramVar, this.value(this.fallback));
+  get p() {
+    if (this.w < 200) return 0;
+    const den = this.w * this.sxx - this.sx * this.sx;
+    return den > 0 ? Math.min(Math.max((this.w * this.sxy - this.sx * this.sy) / den, 0), 2) : 0;
   }
-  value(fallback: number) {
+  g(mu: number) {
+    if (this.nLevel === 0 || this.level <= 0) return 1;
+    return Math.pow(Math.max(mu, this.level / 4) / this.level, this.p);
+  }
+  /** r: residual; paramVar: its parameter part; mu: scoring level of the forecast. */
+  add(r: number, paramVar: number, mu: number) {
+    const g = this.g(mu);
+    this.est.add(r / Math.sqrt(g), paramVar / g, this.est.value(this.fallback / g));
+    this.nLevel++;
+    this.level += Math.max(1 / this.nLevel, 1 - this.decay) * (mu - this.level);
+    if (mu > 1) {
+      const x = Math.log(mu);
+      const y = Math.log(Math.max(r * r - paramVar, 0) + 1);
+      this.sx = this.decay * this.sx + x;
+      this.sy = this.decay * this.sy + y;
+      this.sxx = this.decay * this.sxx + x * x;
+      this.sxy = this.decay * this.sxy + x * y;
+      this.w = this.decay * this.w + 1;
+    }
+  }
+  get levelNow() {
+    return this.level;
+  }
+  value(fallback: number, mu: number) {
     this.fallback = fallback;
-    return this.est.value(fallback);
+    return this.est.value(fallback) * this.g(mu);
   }
 }
 
@@ -214,8 +305,8 @@ export class XptsModel implements Predictor<XptsForecast> {
   readonly rules: RuleFits;
   readonly opts: ModelOptions;
   private readonly hyper = new Map<string, Hyper>();
-  private readonly tot: Residual;
-  private readonly marg: Residual;
+  private readonly tot: ScaledResidual;
+  private readonly marg: ScaledResidual;
   private offset = 0;
   private offsetN = 0;
   private readonly filters = new Map<string, Map<string, GaussianState>>();
@@ -226,6 +317,8 @@ export class XptsModel implements Predictor<XptsForecast> {
   private readonly eventTeams: Map<string, string[]>;
   private readonly last = new Map<string, XptsForecast>();
   readonly history: HistoryPoint[] = [];
+  /** Each event's team estimates frozen when its first playoff match was forecast (for leakage-free replays). */
+  readonly prePlayoff = new Map<string, ReturnType<XptsModel['eventRatings']>>();
   dataAsOf = 0;
   quality = { alliances: 0, missingBreakdown: 0, componentMismatch: 0 };
 
@@ -236,8 +329,8 @@ export class XptsModel implements Predictor<XptsForecast> {
     this.spec = spec ?? seasonSpec(data.year);
     this.rules = inferRules(data.matches, this.spec);
     for (const c of this.spec.components) this.hyper.set(c.id, new Hyper(c.attribution === 'robot' ? 1 : 3, this.opts.halfLife));
-    this.tot = new Residual(this.opts.halfLife);
-    this.marg = new Residual(this.opts.halfLife);
+    this.tot = new ScaledResidual(this.opts.halfLife);
+    this.marg = new ScaledResidual(this.opts.halfLife);
     for (const b of this.spec.bonuses) this.logits.set(b.key, new OnlineLogit());
     // Teams per event: registrations plus anyone who appears in a match (schedules are public before play).
     this.eventTeams = new Map();
@@ -336,6 +429,7 @@ export class XptsModel implements Predictor<XptsForecast> {
 
   predict(m: MatchRow, cutoff: number): XptsForecast {
     const f = this.eventState(m.eventKey);
+    if (m.compLevel !== 'qm' && !this.prePlayoff.has(m.eventKey)) this.prePlayoff.set(m.eventKey, this.eventRatings(m.eventKey));
     const sides = { red: { own: m.red, opp: m.blue }, blue: { own: m.blue, opp: m.red } };
     const comp: Record<Color, Record<string, number>> = { red: {}, blue: {} };
     let varR = 0;
@@ -356,17 +450,19 @@ export class XptsModel implements Predictor<XptsForecast> {
     const sum = (o: Record<string, number>) => Object.values(o).reduce((a, b) => a + b, 0) + this.offset;
     const meanR = sum(comp.red);
     const meanB = sum(comp.blue);
-    const totNoise = this.tot.value(noiseFallback);
+    const totNoiseR = this.tot.value(noiseFallback, meanR);
+    const totNoiseB = this.tot.value(noiseFallback, meanB);
     const margin = meanR - meanB;
-    const marginSd = Math.sqrt(Math.max(varR + varB - 2 * covRB, 0) + this.marg.value(2 * noiseFallback));
+    const level = (meanR + meanB) / 2;
+    const marginSd = Math.sqrt(Math.max(varR + varB - 2 * covRB, 0) + this.marg.value(2 * noiseFallback, level));
     const pBlue = normalCdf((-0.5 - margin) / marginSd);
     const pRedOrTie = 1 - pBlue;
     const pRed = 1 - normalCdf((0.5 - margin) / marginSd);
     const tie = Math.max(pRedOrTie - pRed, 0);
-    const eligible = [...this.hyper.values()].every((h) => h.n >= this.opts.minObs) && this.tot.n >= 30;
+    const eligible = [...this.hyper.values()].every((h) => h.n >= this.opts.minObs && h.ready) && this.tot.n >= 30;
 
     const side = (color: Color, mean: number, pv: number, winP: number): SideForecast => {
-      const sd = Math.sqrt(pv + totNoise);
+      const sd = Math.sqrt(pv + (color === 'red' ? totNoiseR : totNoiseB));
       const own = color === 'red' ? m.red : m.blue;
       const bonuses: Record<string, number> = {};
       let expected = 0;
@@ -393,8 +489,8 @@ export class XptsModel implements Predictor<XptsForecast> {
     const fc: XptsForecast = {
       redMean: meanR,
       blueMean: meanB,
-      redSd: Math.sqrt(varR + totNoise),
-      blueSd: Math.sqrt(varB + totNoise),
+      redSd: Math.sqrt(varR + totNoiseR),
+      blueSd: Math.sqrt(varB + totNoiseB),
       redWinProb: pRed + tie / 2,
       red: side('red', meanR, varR, pRed),
       blue: side('blue', meanB, varB, pBlue),
@@ -470,14 +566,12 @@ export class XptsModel implements Predictor<XptsForecast> {
             if (typeof cat !== 'string' || !values || values[cat] === undefined) return;
             const book = this.book(t);
             (book.outcomes[c.id] ??= {})[cat] = (book.outcomes[c.id][cat] ?? 0) + 1;
-            const r = s.update({ idx: [this.ensure(s, t, c, 'off')], coef: [1] }, values[cat], h.sigma2);
-            h.innovation(r.innovation, r.paramVar);
-            h.observe(values[cat]);
+            s.update({ idx: [this.ensure(s, t, c, 'off')], coef: [1] }, values[cat], h.sigma2);
+            h.observe(values[cat], m.eventKey, [t]);
           });
         } else {
-          const r = s.update(this.design(s, c, own, opp), y, h.sigma2);
-          h.innovation(r.innovation, r.paramVar);
-          h.observe(y);
+          s.update(this.design(s, c, own, opp), y, h.sigma2);
+          h.observe(y, m.eventKey, c.attribution === 'opponent' ? opp : own);
         }
       }
       if (complete) {
@@ -489,7 +583,7 @@ export class XptsModel implements Predictor<XptsForecast> {
       if (fc) {
         const sf = fc[color];
         const r = score - sf.mean;
-        this.tot.add(r, sf.paramVar);
+        this.tot.add(r, sf.paramVar, sf.mean);
         const z2 = (r * r) / (sf.sd * sf.sd);
         for (const t of own) {
           const book = this.book(t);
@@ -499,7 +593,7 @@ export class XptsModel implements Predictor<XptsForecast> {
         if (sf.rp && b) for (const bs of this.spec.bonuses) if (typeof b[bs.key] === 'boolean') this.logits.get(bs.key)!.add(bs.features.reduce((a, id) => a + (sf.components[id] ?? 0), 0), b[bs.key] as boolean);
       }
     }
-    if (fc) this.marg.add(m.redScore - m.blueScore - fc.margin, fc.marginParamVar);
+    if (fc) this.marg.add(m.redScore - m.blueScore - fc.margin, fc.marginParamVar, (fc.redMean + fc.blueMean) / 2);
 
     for (const t of teams) {
       const book = this.book(t);
@@ -554,6 +648,7 @@ export class XptsModel implements Predictor<XptsForecast> {
         if (d) {
           defMean += d.mean;
           defVar += d.var;
+          components[`${c.id}#def`] = { mean: d.mean, sd: Math.sqrt(d.var) };
         }
       }
       const book = this.book(team);
@@ -612,8 +707,10 @@ export class XptsModel implements Predictor<XptsForecast> {
     }
     return {
       components,
-      totalNoiseSd: Math.sqrt(this.tot.value(fallback)),
-      marginNoiseSd: Math.sqrt(this.marg.value(2 * fallback)),
+      /** Noise SDs at the season's typical scoring level; they scale as (μ/level)^(p/2). */
+      totalNoiseSd: Math.sqrt(this.tot.value(fallback, this.tot.levelNow)),
+      marginNoiseSd: Math.sqrt(this.marg.value(2 * fallback, this.marg.levelNow)),
+      noiseScaling: { level: this.tot.levelNow, p: this.tot.p, marginP: this.marg.p },
       offset: this.offset,
       rp: this.rules.rp,
       bonusProbModels: Object.fromEntries([...this.logits].map(([k, l]) => [k, l.n])),

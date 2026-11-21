@@ -83,7 +83,7 @@ export function runSeason(raw: SeasonData, opts: Partial<ModelOptions> = {}, wit
     ['qual', (m) => !isPlayoff(m)],
     ['playoff', isPlayoff],
   ];
-  for (const w of [...new Set(week.values())].sort()) splits.push([w, (m) => week.get(m.eventKey) === w]);
+  for (const w of [...new Set(week.values())].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))) splits.push([w, (m) => week.get(m.eventKey) === w]);
 
   const validation: ValidationRow[] = [];
   for (const p of predictors) {

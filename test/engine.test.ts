@@ -142,17 +142,21 @@ describe('xPts model on a synthetic season', () => {
     for (const b of m.calibration) if (b.n > 150) assert.ok(Math.abs(b.meanPred - b.observed) < 0.08, `bin ${b.lo}: ${b.meanPred} vs ${b.observed}`);
   });
 
-  it('forecasts bonus RPs better than their base rate', () => {
-    // Expected RP from the forecast should correlate with realised RP.
-    const xs: number[] = [];
-    const ys: number[] = [];
+  it('forecasts each bonus RP better than its (in-sample) base rate', () => {
     const byKey = new Map(data.matches.map((m) => [m.key, m]));
-    for (const f of run.forecasts) {
-      if (!f.forecast.eligible || !f.forecast.red.rp) continue;
-      xs.push(f.forecast.red.rp.expected);
-      ys.push(byKey.get(f.matchKey)!.breakdown!.red.rp as number);
+    for (const key of ['autoBonusAchieved', 'coralBonusAchieved', 'bargeBonusAchieved']) {
+      const ps: number[] = [];
+      const ys: number[] = [];
+      for (const f of run.forecasts) {
+        if (!f.forecast.eligible || !f.forecast.red.rp) continue;
+        ps.push(f.forecast.red.rp.bonuses[key]);
+        ys.push(byKey.get(f.matchKey)!.breakdown!.red[key] ? 1 : 0);
+      }
+      const base = ys.reduce((a, b) => a + b, 0) / ys.length;
+      const brier = ps.reduce((a, p, i) => a + (p - ys[i]) ** 2, 0) / ps.length;
+      const baseBrier = ys.reduce((a, y) => a + (base - y) ** 2, 0) / ys.length;
+      assert.ok(brier < baseBrier, `${key}: ${brier.toFixed(4)} vs base ${baseBrier.toFixed(4)}`);
     }
-    assert.ok(pearson(xs, ys) > 0.5, `rp correlation ${pearson(xs, ys)}`);
   });
 
   it('is deterministic', () => {
