@@ -12,11 +12,9 @@ export class OnlineLogit {
   private mean = 0;
   private sd = 1;
 
-  constructor(
-    private readonly refitEvery = 25,
-    private readonly minSamples = 40,
-    private readonly lambda = 1
-  ) {}
+  private readonly refitEvery = 25;
+  private readonly minSamples = 40;
+  private readonly lambda = 1;
 
   get n() {
     return this.xs.length;

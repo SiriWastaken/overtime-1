@@ -50,34 +50,57 @@ export const DEFAULT_OPTIONS: ModelOptions = {
   halfLife: 1500,
 };
 
+/**
+ * Recursive estimate of a noise variance σ² from forecast innovations r ~ N(0, p + σ²), where p = h'Ph is the
+ * parameter part. The maximum-likelihood score equation Σ (r² − p − σ²)/(p + σ²)² = 0 is solved as a
+ * weighted mean with weights 1/(p + σ̂²)², exponentially discounted so the estimate can follow the season.
+ * (A plain mean of r² − p is badly biased early in a season, when diffuse priors make p enormous.)
+ */
+export class NoiseEstimator {
+  private A = 0;
+  private B = 0;
+  n = 0;
+  private readonly decay: number;
+  constructor(halfLife: number) {
+    this.decay = Math.pow(2, -1 / halfLife);
+  }
+  add(r: number, p: number, current: number) {
+    const w = 1 / (p + current) ** 2;
+    this.A = this.decay * this.A + w * (r * r - p);
+    this.B = this.decay * this.B + w;
+    this.n++;
+  }
+  /** Floored at a fraction of the fallback: σ² cannot be negative even when an estimate overshoots. */
+  value(fallback: number, minN = 30) {
+    return this.n < minN || this.B === 0 ? fallback : Math.max(this.A / this.B, 0.02 * fallback, 0.25);
+  }
+}
+
 /** Online estimates of one component's season-level parameters. */
 class Hyper {
   n = 0;
   mu = 0; // per-robot level
   V = 0; // variance of an observation about k·μ
-  nSig = 0;
-  sig = 0;
-  constructor(
-    readonly k: number,
-    private readonly halfLife: number
-  ) {}
-  private alpha(n: number) {
-    return Math.max(1 / n, Math.LN2 / this.halfLife);
+  readonly k: number;
+  private readonly halfLife: number;
+  private readonly noise: NoiseEstimator;
+  constructor(k: number, halfLife: number) {
+    this.k = k;
+    this.halfLife = halfLife;
+    this.noise = new NoiseEstimator(halfLife);
   }
   observe(y: number) {
     this.n++;
-    const a = this.alpha(this.n);
+    const a = Math.max(1 / this.n, Math.LN2 / this.halfLife);
     const d = y - this.k * this.mu;
     this.V += a * (d * d - this.V);
     this.mu += (a * d) / this.k;
   }
-  /** E[r²] = h'Ph + σ², so r² − h'Ph is an unbiased per-observation estimate of σ². */
   innovation(r: number, paramVar: number) {
-    this.nSig++;
-    this.sig += this.alpha(this.nSig) * (r * r - paramVar - this.sig);
+    this.noise.add(r, paramVar, this.sigma2);
   }
   get sigma2() {
-    return this.nSig < 20 ? Math.max(this.V / 2, 1) : Math.max(this.sig, 0.05 * this.V, 0.25);
+    return this.noise.value(Math.max(this.V / 2, 1), 20);
   }
   get tau2() {
     return Math.max((this.V - this.sigma2) / this.k, (0.02 * this.V) / this.k, 0.25);
@@ -86,16 +109,20 @@ class Hyper {
 
 /** Online estimate of an aggregate residual variance (alliance total or margin) from the model's own forecasts. */
 class Residual {
-  n = 0;
-  v = 0;
-  constructor(private readonly halfLife: number) {}
+  private readonly est: NoiseEstimator;
+  private fallback = 1;
+  constructor(halfLife: number) {
+    this.est = new NoiseEstimator(halfLife);
+  }
+  get n() {
+    return this.est.n;
+  }
   add(r: number, paramVar: number) {
-    this.n++;
-    const a = Math.max(1 / this.n, Math.LN2 / this.halfLife);
-    this.v += a * (r * r - paramVar - this.v);
+    this.est.add(r, paramVar, this.value(this.fallback));
   }
   value(fallback: number) {
-    return this.n < 30 ? fallback : Math.max(this.v, 0.25 * fallback, 1);
+    this.fallback = fallback;
+    return this.est.value(fallback);
   }
 }
 
