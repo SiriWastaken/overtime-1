@@ -1,3 +1,4 @@
+import { Tip } from '@/components/ui';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Empty, TeamLink, WinBar } from '@/components/bits';
@@ -5,7 +6,7 @@ import { LineScore } from '@/components/LineScore';
 import { PHASE_COLS } from '@/components/RatingsTable';
 import { seasonSpec } from '@/engine/seasons';
 import { playoffAnalysis, rankingAnalysis, selectionAnalysis, type TbaAlliance } from '@/lib/analysis';
-import { ago, dateRange, location, matchLabel, pct, pct1, pts, range } from '@/lib/format';
+import { dateRange, location, matchLabel, pct, pct1, pts, range } from '@/lib/format';
 import { event, eventAccuracy, eventMatches, eventResource, eventTeamKeys, eventTeamRatings, teamMetaMap, type MatchWithPrediction } from '@/lib/queries';
 
 export async function generateMetadata({ params }: { params: Promise<{ key: string }> }) {
@@ -37,7 +38,6 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           <div className="sub">
             {dateRange(ev.start_date, ev.end_date)} · {location(ev)} · {ev.event_type_string}
             {ev.district_name ? ` · ${ev.district_name}` : ''} · <span className={`status ${ev.status}`}>{ev.status}</span>
-            {ev.synced_at ? <span className="muted"> · synced {ago(ev.synced_at)}</span> : null}
           </div>
         </div>
         <div className="facts">
@@ -60,7 +60,9 @@ export default async function EventPage({ params, searchParams }: { params: Prom
         </div>
       </div>
       {!rated ? (
-        <div className="notice">Off-season events are not rated: they use modified rules, B-teams and demo team numbers. Data is shown as reported by TBA.</div>
+        <div className="notice">
+          <strong>Off-season.</strong> Not rated.
+        </div>
       ) : null}
       <nav className="tabs" aria-label="Event sections">
         {TABS.map((t) => (
@@ -105,7 +107,7 @@ function Matches({ year, matches }: { year: number; matches: MatchWithPrediction
           <section className="section" key={label as string}>
             <div className="section-head">
               <h2>{label as string}</h2>
-              <span className="note">forecasts frozen at match start; open a match for its breakdown</span>
+              <Tip label="About forecasts">Locked at match start. Tap a match for the breakdown.</Tip>
             </div>
             <MatchTable year={year} matches={list as MatchWithPrediction[]} />
           </section>
@@ -184,9 +186,10 @@ function Rankings({ eventKey, year }: { eventKey: string; year: number }) {
     <section className="section">
       <div className="section-head">
         <h2>{ra && ra.remaining > 0 ? 'Projected final rankings' : 'Rankings'}</h2>
-        <span className="note">
-          {ra && ra.remaining > 0 ? `${ra.remaining} qualification matches left; 5,000 simulations of their RP outcomes` : 'Qualifications complete; official order from TBA'}
-        </span>
+        <span className="note">{ra && ra.remaining > 0 ? `${ra.remaining} quals left` : 'Final'}</span>
+        <Tip label="About rankings">
+          {ra && ra.remaining > 0 ? '5,000 simulations of the remaining matches. TBA’s official order wins.' : 'Official order from TBA.'}
+        </Tip>
       </div>
       <div className="table-wrap">
         <table className="agate">
@@ -216,7 +219,7 @@ function Rankings({ eventKey, year }: { eventKey: string; year: number }) {
               .map((t) => ({ t, sim: rows.find((r) => r.team === t), off: official.get(t) }))
               .sort((a, b) => (ra && ra.remaining > 0 ? 0 : (a.off?.rank ?? 999) - (b.off?.rank ?? 999)))
               .map(({ t, sim, off }) => (
-                <tr key={t}>
+                <tr key={t} data-peek={t} data-year={year}>
                   <td className="n">{off?.rank ?? '—'}</td>
                   <td>
                     <TeamLink team={t} meta={meta.get(t)} year={year} />
@@ -241,9 +244,6 @@ function Rankings({ eventKey, year }: { eventKey: string; year: number }) {
           </tbody>
         </table>
       </div>
-      <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-        RP now counts only matches stored with a score breakdown; TBA’s official ranking is authoritative. Simulation ties are broken at random, standing in for game-specific tiebreakers.
-      </p>
     </section>
   );
 }
@@ -260,7 +260,7 @@ function Teams({ eventKey, year }: { eventKey: string; year: number }) {
     <section className="section">
       <div className="section-head">
         <h2>Teams at this event</h2>
-        <span className="note">estimates as of the latest result at this event (or entering it, if it has not started)</span>
+        <Tip label="About these numbers">As of the latest result here, or entering the event.</Tip>
       </div>
       <div className="table-wrap">
         <table className="agate">
@@ -281,7 +281,7 @@ function Teams({ eventKey, year }: { eventKey: string; year: number }) {
           </thead>
           <tbody>
             {rows.map(({ k, r }, i) => (
-              <tr key={k}>
+              <tr key={k} data-peek={k} data-year={year}>
                 <td className="rank n">{r ? i + 1 : ''}</td>
                 <td>
                   <TeamLink team={k} meta={meta.get(k)} year={year} />
@@ -320,7 +320,7 @@ function Playoffs({ eventKey, year }: { eventKey: string; year: number }) {
       <section className="section">
         <div className="section-head">
           <h2>Alliances</h2>
-          <span className="note">{pa.bracket ? `${pa.bracket.name} · 20,000 simulated brackets, completed series fixed to their real results` : ''}</span>
+          {pa.bracket ? <Tip label="About the odds">{`${pa.bracket.name}. 20,000 simulated brackets; played series are fixed.`}</Tip> : null}
         </div>
         <div className="table-wrap">
           <table className="agate">
@@ -358,7 +358,7 @@ function Playoffs({ eventKey, year }: { eventKey: string; year: number }) {
                   {champ ? (
                     <td className="bar-cell">
                       <div className="hbar">
-                        <i style={{ width: `${(champ[a.seed] ?? 0) * 100}%`, background: 'var(--ink)' }} />
+                        <i style={{ width: `${(champ[a.seed] ?? 0) * 100}%`, background: 'var(--text-2)' }} />
                       </div>
                     </td>
                   ) : null}
@@ -367,15 +367,12 @@ function Playoffs({ eventKey, year }: { eventKey: string; year: number }) {
             </tbody>
           </table>
         </div>
-        <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-          Expected score uses each alliance’s three highest-rated robots. Alliance members are TBA’s official selections; probabilities are simulated.
-        </p>
       </section>
       {pa.bracket && pa.sim ? (
         <section className="section">
           <div className="section-head">
             <h2>Bracket</h2>
-            <span className="note">solid = played (official); percentages = simulated chance of winning that series</span>
+            <Tip label="Reading the bracket">Bold = played. % = simulated odds of winning the series.</Tip>
           </div>
           <div className="bracket">
             {[...byRound].map(([round, nodes]) => (
@@ -423,14 +420,13 @@ function Selection({ eventKey, year, captain }: { eventKey: string; year: number
     <>
       {al?.length ? (
         <div className="notice info">
-          Alliance selection at this event is complete; see Playoffs for the official alliances. The tool below replays the decision{' '}
-          {sel.frozen ? 'using robot estimates frozen before the first playoff match, so no playoff result leaks in.' : 'using the latest estimates.'}
+          <strong>Selection is done.</strong> Replayed {sel.frozen ? 'with pre-playoff ratings' : 'with the latest ratings'}.
         </div>
       ) : null}
       <section className="section">
         <div className="section-head">
           <h2>Pick values for alliance {captain}</h2>
-          <span className="note">captains from {sel.basis}</span>
+          <Tip label="How picks are valued">{`Captains from ${sel.basis}. Each pick plays out the rest of the draft and 4,000 playoffs. Ignores declines and pairings.`}</Tip>
         </div>
         <form className="inline" action={`/events/${eventKey}`}>
           <input type="hidden" name="tab" value="selection" />
@@ -460,7 +456,7 @@ function Selection({ eventKey, year, captain }: { eventKey: string; year: number
             </thead>
             <tbody>
               {sel.options.map((o, i) => (
-                <tr key={o.team}>
+                <tr key={o.team} data-peek={o.team} data-year={year}>
                   <td className="n muted">{i + 1}</td>
                   <td>
                     <TeamLink team={o.team} meta={meta.get(o.team)} year={year} />
@@ -474,14 +470,6 @@ function Selection({ eventKey, year, captain }: { eventKey: string; year: number
               ))}
             </tbody>
           </table>
-        </div>
-        <div className="prose" style={{ fontSize: 13, marginTop: 12 }}>
-          <p>
-            Each candidate is valued by simulating the rest of the draft (serpentine order, {sel.perAlliance} robots per alliance; other captains take the highest-rated team available)
-            and then 4,000 runs of the {sel.bracketName.toLowerCase()}. That is why the order can differ from raw xPts: a pick changes which robots your rivals get, and
-            a higher-variance alliance can be worth more to an underdog. Not modelled: declined invitations, captains picked by other captains, and robot pairings that work better or
-            worse than their individual numbers suggest.
-          </p>
         </div>
       </section>
     </>

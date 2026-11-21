@@ -3,6 +3,7 @@
 import { MODEL_VERSION } from '@/engine/model';
 import { ENDPOINTS } from '@/lib/endpoints';
 import { seasonSpec } from '@/engine/seasons';
+import { seasonEdges } from '@/lib/edge';
 import { adHocForecast, playoffAnalysis, rankingAnalysis, selectionAnalysis } from '@/lib/analysis';
 import {
   defaultYear,
@@ -85,6 +86,21 @@ function route(parts: string[], q: URLSearchParams): unknown {
       const r = teamRatings(year, { q: q.get('q') ?? undefined, limit, offset });
       return { year, total: r.total, limit, offset, teams: r.rows.map(({ key, number, nickname, rank, percentile, rating }) => ({ key, number, nickname, rank, percentile, rating })) };
     }
+    if (c === 'edge') {
+      const s = need(seasonEdges(year), `EDGE for ${year}`);
+      const limit = Math.min(Number(q.get('limit')) || 100, 5000);
+      const offset = Math.max(Number(q.get('offset')) || 0, 0);
+      return {
+        year,
+        run: s.runId,
+        units: 'win probability (0.10 = +10 percentage points)',
+        baseline: { kind: 'median rated robot', net: s.ctx.replacement, poolSize: s.ctx.poolSize },
+        total: s.ranked.length,
+        limit,
+        offset,
+        teams: s.ranked.slice(offset, offset + limit),
+      };
+    }
     if (c === 'validation') return { year, run: modelRun(year)?.id ?? null, rows: validation(year) };
     if (c === 'events') return events(year);
   }
@@ -95,7 +111,7 @@ function route(parts: string[], q: URLSearchParams): unknown {
     const meta = teamMeta(key);
     const rating = teamRating(year, key);
     if (!meta && !rating) throw new HttpError(404, 'team not found');
-    return { team: meta, year, rating, events: teamEvents(year, key), history: teamHistory(year, key) };
+    return { team: meta, year, rating, edge: seasonEdges(year)?.byTeam.get(key) ?? null, events: teamEvents(year, key), history: teamHistory(year, key) };
   }
   if (a === 'events' && b) {
     const key = eventKeyOk(b);
@@ -119,6 +135,28 @@ function route(parts: string[], q: URLSearchParams): unknown {
       if ('error' in r) throw new HttpError(422, r.error);
       return r;
     }
+  }
+  if (a === 'search') {
+    const year = yearOf(q.get('year') ?? String(defaultYear()));
+    const term = (q.get('q') ?? '').trim().slice(0, 60);
+    if (!term) return { year, q: term, teams: [], events: [] };
+    const num = term.replace(/^frc/i, '');
+    const edges = seasonEdges(year)?.byTeam;
+    const hits = teamRatings(year, { q: num, limit: 40 }).rows;
+    // Exact team number first, then number prefixes, then everything else by season rank.
+    const score = (n: number) => (String(n) === num ? 0 : String(n).startsWith(num) ? 1 : 2);
+    hits.sort((x, y) => score(x.number) - score(y.number) || x.rank - y.rank);
+    const low = term.toLowerCase();
+    const evs = events(year)
+      .filter((e) => `${e.name} ${e.short_name ?? ''} ${e.city ?? ''} ${e.key}`.toLowerCase().includes(low))
+      .slice(0, 4)
+      .map((e) => ({ key: e.key, name: e.name, status: e.status, start: e.start_date }));
+    return {
+      year,
+      q: term,
+      teams: hits.slice(0, 7).map((t) => ({ key: t.key, number: t.number, nickname: t.nickname, rank: edges?.get(t.key)?.rank ?? t.rank, edge: edges?.get(t.key)?.edge ?? null })),
+      events: evs,
+    };
   }
   if (a === 'matches' && b) return need(match(b), 'match');
   if (a === 'predict') {

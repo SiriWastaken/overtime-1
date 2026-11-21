@@ -34,11 +34,14 @@ export interface SeasonRun {
   excluded: { notEligible: number; total: number };
 }
 
-/** Restrict to official events: off-season events use modified rules, B-teams and demo team numbers. */
+/**
+ * Restrict to official events (off-season events use modified rules, B-teams and demo team numbers) and to
+ * matches with two real alliances (TBA occasionally lists a playoff match with an empty alliance).
+ */
 export function officialOnly(data: SeasonData): SeasonData {
   const events = data.events.filter((e) => OFFICIAL_EVENT_TYPES.has(e.eventType));
   const keys = new Set(events.map((e) => e.key));
-  return { ...data, events, matches: data.matches.filter((m) => keys.has(m.eventKey)) };
+  return { ...data, events, matches: data.matches.filter((m) => keys.has(m.eventKey) && m.red.length > 0 && m.blue.length > 0) };
 }
 
 export function runSeason(raw: SeasonData, opts: Partial<ModelOptions> = {}, withAblations = true): SeasonRun {

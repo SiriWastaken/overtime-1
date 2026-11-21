@@ -15,8 +15,8 @@ function ticks(lo: number, hi: number, n = 5): number[] {
 const HatchDef = ({ id }: { id: string }) => (
   <defs>
     <pattern id={id} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <rect width="4" height="4" fill="var(--sheet-2)" />
-      <line x1="0" y1="0" x2="0" y2="4" stroke="var(--ink-3)" strokeWidth="1" />
+      <rect width="4" height="4" fill="rgba(255,255,255,0.04)" />
+      <line x1="0" y1="0" x2="0" y2="4" stroke="rgba(255,255,255,0.22)" strokeWidth="1" />
     </pattern>
   </defs>
 );
@@ -29,7 +29,7 @@ export interface SeriesPoint {
 }
 
 /** Rating progression: mean line with a hatched 80% band; events separated by labelled ticks. */
-export function RatingChart({ points, yMax, yLabel = 'xPts per match' }: { points: SeriesPoint[]; yMax?: number; yLabel?: string }) {
+export function RatingChart({ points, yMax, yLabel = 'Points added per match' }: { points: SeriesPoint[]; yMax?: number; yLabel?: string }) {
   if (points.length < 2) return <p className="muted">Not enough matches for a progression chart.</p>;
   const H = 220;
   const m = { l: 44, r: 12, t: 12, b: 34 };
@@ -49,10 +49,10 @@ export function RatingChart({ points, yMax, yLabel = 'xPts per match' }: { point
         ))}
       </g>
       <polygon points={band} fill="url(#rc-hatch)" opacity="0.9" />
-      <path d={line} fill="none" stroke="var(--ink)" strokeWidth="1.75" />
+      <path d={line} fill="none" stroke="var(--chart-ink)" strokeWidth="1.75" />
       {breaks.map((i) => (
         <g key={i}>
-          <line x1={x(i)} x2={x(i)} y1={m.t} y2={H - m.b} stroke="var(--ink-3)" strokeDasharray="2 3" />
+          <line x1={x(i)} x2={x(i)} y1={m.t} y2={H - m.b} stroke="var(--text-3)" strokeDasharray="2 3" />
           <text x={x(i) + 3} y={H - m.b + 14} className="label">
             {points[i].event.slice(4).toUpperCase()}
           </text>
@@ -92,9 +92,9 @@ export function Histogram({ values, highlight, xLabel, bins = 30, lo: lo0, hi: h
   return (
     <svg className="chart" viewBox={`0 0 ${width} ${H}`} role="img" aria-label={`Distribution of ${xLabel}`}>
       {counts.map((c, i) => (
-        <rect key={i} x={x(lo + i * w) + 0.5} width={Math.max(x(lo + (i + 1) * w) - x(lo + i * w) - 1, 0.5)} y={y(c)} height={H - m.b - y(c)} fill={highlight !== undefined && highlight >= lo + i * w && highlight < lo + (i + 1) * w ? 'var(--act)' : 'var(--ink-2)'} />
+        <rect key={i} x={x(lo + i * w) + 0.5} width={Math.max(x(lo + (i + 1) * w) - x(lo + i * w) - 1, 0.5)} y={y(c)} height={H - m.b - y(c)} fill={highlight !== undefined && highlight >= lo + i * w && highlight < lo + (i + 1) * w ? 'var(--text)' : 'var(--line-3)'} />
       ))}
-      {highlight !== undefined ? <line x1={x(highlight)} x2={x(highlight)} y1={m.t} y2={H - m.b} stroke="var(--act)" strokeWidth="1.5" /> : null}
+      {highlight !== undefined ? <line x1={x(highlight)} x2={x(highlight)} y1={m.t} y2={H - m.b} stroke="var(--text)" strokeWidth="1.5" /> : null}
       <g className="axis">
         <line x1={m.l} x2={width - m.r} y1={H - m.b} y2={H - m.b} />
         {ticks(lo, hi, width < W ? 5 : 8).map((v) => (
@@ -133,10 +133,10 @@ export function Calibration({ bins }: { bins: { lo: number; hi: number; n: numbe
           </g>
         ))}
       </g>
-      <line x1={x(0)} y1={y(0)} x2={x(1)} y2={y(1)} stroke="var(--ink-3)" strokeDasharray="3 3" />
-      <path d={pts.map((b, i) => `${i ? 'L' : 'M'}${x(b.meanPred)},${y(b.observed)}`).join(' ')} fill="none" stroke="var(--ink)" strokeWidth="1.5" />
+      <line x1={x(0)} y1={y(0)} x2={x(1)} y2={y(1)} stroke="var(--text-3)" strokeDasharray="3 3" />
+      <path d={pts.map((b, i) => `${i ? 'L' : 'M'}${x(b.meanPred)},${y(b.observed)}`).join(' ')} fill="none" stroke="var(--chart-ink)" strokeWidth="1.5" />
       {pts.map((b) => (
-        <circle key={b.lo} cx={x(b.meanPred)} cy={y(b.observed)} r={2 + 6 * Math.sqrt(b.n / nmax)} fill="var(--sheet)" stroke="var(--ink)" strokeWidth="1.5">
+        <circle key={b.lo} cx={x(b.meanPred)} cy={y(b.observed)} r={2 + 6 * Math.sqrt(b.n / nmax)} fill="var(--surface)" stroke="var(--chart-ink)" strokeWidth="1.5">
           <title>{`Forecast ${Math.round(b.meanPred * 100)}%: red won ${Math.round(b.observed * 100)}% of ${b.n}`}</title>
         </circle>
       ))}

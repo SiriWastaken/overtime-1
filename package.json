@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "sync": "node --env-file-if-exists=.env.local scripts/overtime.ts sync",
     "model": "node --env-file-if-exists=.env.local scripts/overtime.ts model",
+    "edge": "node --env-file-if-exists=.env.local scripts/edge.ts",
     "update": "node --env-file-if-exists=.env.local scripts/overtime.ts update"
   },
   "type": "module",

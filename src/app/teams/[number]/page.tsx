@@ -1,11 +1,14 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Empty, RangeBar, TeamLink, WinBar } from '@/components/bits';
+import { Avatar, Empty, RangeBar, TeamLink, WinBar } from '@/components/bits';
 import { Histogram, RatingChart } from '@/components/charts';
 import { phaseRating, PHASE_COLS } from '@/components/RatingsTable';
+import { EdgeGauge, edgePts, hot } from '@/components/edge';
+import { MyTeamButton, PicklistButton, Tip } from '@/components/ui';
 import { seasonSpec } from '@/engine/seasons';
+import { seasonEdges } from '@/lib/edge';
 import { wilson } from '@/engine/stats';
-import { dateRange, location, matchLabel, pct, pts, range } from '@/lib/format';
+import { dateRange, location, matchLabel, pct, pts } from '@/lib/format';
 import { modelRun, resolveYear, teamEvents, teamHistory, teamMatches, teamMeta, teamRating, teamRatings, teamYears } from '@/lib/queries';
 
 export async function generateMetadata({ params }: { params: Promise<{ number: string }> }) {
@@ -28,23 +31,27 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
   const matches = teamMatches(year, key);
   const all = rated ? teamRatings(year).rows : [];
   const r = rated?.rating;
+  const se = r ? seasonEdges(year) : null;
+  const edge = se?.byTeam.get(key) ?? null;
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>
-            {number} {meta?.nickname ?? ''}
+            <Avatar team={number} year={year} size={40} />
+            <span className={`team-num${hot(edge?.rank)}`}>{number}</span>{' '}
+            <em>{meta?.nickname ?? ''}</em>
           </h1>
           <div className="sub">
-            {meta ? location(meta) : 'Team details not synced'}
-            {meta?.rookie_year ? ` · Rookie year ${meta.rookie_year}` : ''}
+            {meta ? location(meta) : 'Unknown origin'}
+            {meta?.rookie_year ? ` · since ${meta.rookie_year}` : ''}
             {years.length > 1 ? (
               <>
-                {' · Seasons: '}
+                {' · '}
                 {years.map((y, i) => (
                   <span key={y}>
-                    {i ? ', ' : ''}
+                    {i ? ' ' : ''}
                     {y === year ? <strong>{y}</strong> : <Link href={`/teams/${number}?year=${y}`}>{y}</Link>}
                   </span>
                 ))}
@@ -52,59 +59,99 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
             ) : null}
           </div>
         </div>
-        {r && rated ? (
-          <div className="facts">
-            <div className="fact">
-              <b>{pts(r.net, 1)}</b>
-              <small>xPts / match</small>
-            </div>
-            <div className="fact">
-              <b>
-                {rated.rank}
-                <span style={{ fontSize: 14, color: 'var(--ink-3)' }}>/{rated.total}</span>
-              </b>
-              <small>season rank</small>
-            </div>
-            <div className="fact">
-              <b>{range(r.total.mean - 1.2816 * r.total.sd, r.total.mean + 1.2816 * r.total.sd)}</b>
-              <small>80% range, scoring</small>
-            </div>
+        {r ? (
+          <div className="actions">
+            <PicklistButton team={key} year={year} />
+            <Link className="button ghost" href={`/pick?year=${year}&red=${number}`}>
+              Try on launch pad
+            </Link>
+            <MyTeamButton team={key} />
           </div>
         ) : null}
       </div>
 
       {!r ? (
         <Empty>
-          No {year} rating for team {number}. {run ? 'They have no official matches stored for this season.' : `The ${year} season has not been modelled yet.`}
+          <strong>Still in the pits.</strong>
+          {run ? `No official ${year} matches for ${number}.` : `${year} isn’t rated yet.`}
         </Empty>
       ) : (
         <>
+          <div className="tiles">
+            {edge ? (
+              <div className="tile hero-tile">
+                <small>
+                  EDGE · extra wins per 100 matches
+                  <Tip label="What is EDGE?">Compared with a median robot in the same alliance.</Tip>
+                </small>
+                <EdgeGauge edge={edge.edge} lo={edge.lo80} hi={edge.hi80} matches={edge.matches} size="lg" />
+                <span className="range-line">
+                  80%: {edgePts(edge.lo80)} to {edgePts(edge.hi80)}
+                </span>
+              </div>
+            ) : null}
+            <div className="tile">
+              <b>
+                #{(edge?.rank ?? rated!.rank).toLocaleString()}
+              </b>
+              <small>Rank of {rated!.total.toLocaleString()}</small>
+            </div>
+            <div className="tile">
+              <b>
+                {r.net.toFixed(1)}
+              </b>
+              <small>
+                Points added / match
+                <Tip label="What is this?">Points this robot adds to its alliance’s margin each match (xPts).</Tip>
+              </small>
+            </div>
+            <div className="tile">
+              <b>
+                {r.matches}
+              </b>
+              <small>
+                Matches · {r.events.length} event{r.events.length === 1 ? '' : 's'}
+              </small>
+            </div>
+            <div className="tile">
+              <b>
+                {r.volatility.toFixed(2)}
+              </b>
+              <small>
+                Volatility
+                <Tip label="What is volatility?" align="right">
+                  1.00 = as predictable as expected. Higher = more surprises.
+                </Tip>
+              </small>
+            </div>
+          </div>
+
           <div className="grid-2">
             <section className="section">
               <div className="section-head">
-                <h2>Rating through the season</h2>
-                <span className="note">line = estimate, hatch = 80% range</span>
+                <h2>Points added, match by match</h2>
+                <Tip label="About this chart">Estimate after each match. Shaded band = 80% range.</Tip>
               </div>
               <div className="figure">
                 <RatingChart points={hist.map((h) => ({ t: h.t, mean: h.mean, sd: h.sd, event: h.event_key }))} />
-                <figcaption>
-                  Scoring contribution after each match, as it stood when that result became public. Wide early bands narrow as matches accumulate; the estimate carries between events with
-                  extra uncertainty for robot changes.
-                </figcaption>
               </div>
             </section>
             <section className="section">
               <div className="section-head">
-                <h2>Where it comes from</h2>
+                <h2>Where points come from</h2>
               </div>
-              <table className="agate">
+              <div className="table-wrap"><table className="agate">
                 <thead>
                   <tr>
                     <th>Component</th>
-                    <th className="n">xPts</th>
+                    <th className="n">Points</th>
                     <th className="n">±SD</th>
-                    <th style={{ minWidth: 110 }}>vs. season best</th>
-                    <th className="n">Pctile</th>
+                    <th className="hide-m" style={{ minWidth: 110 }}>
+                      vs. season best
+                    </th>
+                    <th className="n" title="Share of rated teams this team is ahead of">
+                      Percentile
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -118,12 +165,10 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
                       <tr key={c.id}>
                         <td>
                           {c.label}
-                          {c.attribution === 'robot' ? <span className="muted"> · observed per robot</span> : null}
-                          {c.attribution === 'opponent' ? <span className="muted"> · given to opponents</span> : null}
                         </td>
                         <td className="n strong">{pts(v.mean, 1)}</td>
                         <td className="n muted">{pts(v.sd, 1)}</td>
-                        <td className="bar-cell">
+                        <td className="bar-cell hide-m">
                           <RangeBar mean={v.mean} sd={v.sd} max={max} />
                         </td>
                         <td className="n">{Math.round((100 * below) / Math.max(others.length, 1))}</td>
@@ -133,53 +178,37 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
                   {r.defense ? (
                     <tr>
                       <td>
-                        Opponent suppression <span className="muted">· lowers opponents’ scoring</span>
+                        Defense
                       </td>
                       <td className="n strong">{pts(r.defense.mean, 1)}</td>
                       <td className="n muted">{pts(r.defense.sd, 1)}</td>
-                      <td />
+                      <td className="hide-m" />
                       <td className="n">{Math.round((100 * all.filter((x) => (x.rating.defense?.mean ?? 0) < r.defense!.mean).length) / all.length)}</td>
                     </tr>
                   ) : null}
                   <tr>
-                    <td className="strong">Net (scoring + suppression − fouls)</td>
+                    <td className="strong">Total</td>
                     <td className="n strong">{pts(r.net, 1)}</td>
                     <td className="n muted">{pts(r.total.sd, 1)}</td>
-                    <td />
+                    <td className="hide-m" />
                     <td className="n">{Math.round(100 * (1 - (rated!.rank - 1) / rated!.total))}</td>
                   </tr>
                 </tbody>
-              </table>
-              <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                Percentile among {rated!.total} rated teams. Fouls percentile counts teams conceding more.
-              </p>
+              </table></div>
             </section>
           </div>
 
           <div className="grid-2">
             <section className="section">
               <div className="section-head">
-                <h2>Reliability</h2>
+                <h2>On the field</h2>
+                <Tip label="About this table">Recorded by FIRST for this robot, with a 95% range.</Tip>
               </div>
-              <dl className="kv" style={{ marginBottom: 12 }}>
-                <dt>Volatility</dt>
-                <dd>
-                  {r.volatility.toFixed(2)}{' '}
-                  <span className="muted">
-                    {r.volatility < 0.9 ? 'steadier than forecast' : r.volatility > 1.2 ? 'more erratic than forecast' : 'about as variable as forecast'} (1.00 = alliances varied exactly as
-                    expected)
-                  </span>
-                </dd>
-                <dt>Matches</dt>
-                <dd>
-                  {r.matches} at {r.events.length} event{r.events.length === 1 ? '' : 's'}
-                </dd>
-              </dl>
               {Object.keys(r.outcomes).length ? (
-                <table className="agate">
+                <div className="table-wrap free"><table className="agate">
                   <thead>
                     <tr>
-                      <th>Observed per robot</th>
+                      <th>Recorded by FIRST</th>
                       <th>Outcome</th>
                       <th className="n">Count</th>
                       <th className="n">Rate</th>
@@ -210,9 +239,12 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
                         });
                     })}
                   </tbody>
-                </table>
+                </table></div>
               ) : (
-                <p className="muted">This season’s breakdown has no per-robot fields.</p>
+                <div className="empty">
+                  <strong>No per-robot data</strong>
+                  {year} score sheets only record alliances.
+                </div>
               )}
             </section>
             <section className="section">
@@ -220,8 +252,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
                 <h2>Among all {rated!.total} teams</h2>
               </div>
               <div className="figure">
-                <Histogram values={all.map((x) => x.rating.net)} highlight={r.net} xLabel="xPts per match" />
-                <figcaption>Season distribution of net expected points; this team is marked.</figcaption>
+                <Histogram values={all.map((x) => x.rating.net)} highlight={r.net} xLabel="Points added per match" />
               </div>
             </section>
           </div>
@@ -233,7 +264,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
           <h2>Events</h2>
         </div>
         {evs.length ? (
-          <table className="agate">
+          <div className="table-wrap free"><table className="agate">
             <thead>
               <tr>
                 <th>Event</th>
@@ -243,7 +274,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
                     {p.label}
                   </th>
                 ))}
-                <th className="n">xPts at event</th>
+                <th className="n">xPts there</th>
                 <th className="n">±SD</th>
               </tr>
             </thead>
@@ -271,16 +302,16 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         ) : (
-          <Empty>No {year} events stored for this team.</Empty>
+          <Empty>No events on the radar.</Empty>
         )}
       </section>
 
       <section className="section">
         <div className="section-head">
           <h2>Matches</h2>
-          <span className="note">forecast = frozen before the match started</span>
+          <Tip label="About forecasts">Forecasts were locked before each match started.</Tip>
         </div>
         {matches.length ? (
           <div className="table-wrap">
@@ -351,7 +382,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
             </table>
           </div>
         ) : (
-          <Empty>No {year} matches stored.</Empty>
+          <Empty>No matches logged yet.</Empty>
         )}
       </section>
     </>

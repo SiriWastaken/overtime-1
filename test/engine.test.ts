@@ -107,6 +107,17 @@ describe('walk-forward integrity', () => {
   });
 });
 
+describe('data hygiene', () => {
+  it('drops matches without two real alliances so no forecast can become NaN', () => {
+    const { data } = syntheticSeason(9, 60, 2, 30, 6);
+    const broken = { ...data.matches[40], key: `${data.matches[40].eventKey}_sf1m1`, compLevel: 'sf' as const, blue: [] };
+    data.matches.push(broken);
+    const run = runSeason(data, {}, false);
+    for (const v of run.validation) assert.ok(Number.isFinite(v.metrics.logLoss), `${v.model} ${v.split}`);
+    assert.ok(!run.forecasts.some((f) => f.matchKey === broken.key));
+  });
+});
+
 describe('xPts model on a synthetic season', () => {
   const { data, teams } = syntheticSeason(11);
   const run = runSeason(data);

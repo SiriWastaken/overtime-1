@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Empty } from '@/components/bits';
+import { Tip } from '@/components/ui';
 import { dateRange, location } from '@/lib/format';
 import { events, resolveYear } from '@/lib/queries';
 
@@ -19,21 +20,24 @@ export default async function Events({ searchParams }: { searchParams: Promise<R
   return (
     <>
       <div className="page-head">
-        <div>
-          <h1>Events, {year}</h1>
-          <div className="sub">Every {year} event TBA lists. Official events feed the ratings; off-season events are listed but not rated (different rules and team numbers).</div>
-        </div>
+        <h1>
+          Events <em>{year}</em>
+        </h1>
+        <Tip label="Which events count?">Only official events feed ratings. Off-season events are listed, not rated.</Tip>
       </div>
-      <form className="inline" action="/events">
+      <form className="inline" action="/events" role="search">
         <input type="hidden" name="year" value={year ?? ''} />
         <label className="sr-only" htmlFor="q">
           Filter events
         </label>
-        <input id="q" type="search" name="q" defaultValue={q} placeholder="Name, city, state, country or key" style={{ width: 280 }} />
+        <input id="q" type="search" name="q" defaultValue={q} placeholder="Name, city or code" style={{ width: 300, maxWidth: '100%' }} />
         <button type="submit">Filter</button>
       </form>
       {list.length === 0 ? (
-        <Empty>{all.length ? 'No events match that filter.' : `No ${year ?? ''} events synced yet.`}</Empty>
+        <Empty>
+          <strong>Sudden death: no match.</strong>
+          {all.length ? 'Nothing matches. Try a city.' : 'No events synced yet.'}
+        </Empty>
       ) : (
         <div className="table-wrap">
           <table className="agate">

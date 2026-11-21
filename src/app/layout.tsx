@@ -1,56 +1,50 @@
-import type { Metadata } from 'next';
-import { Archivo } from 'next/font/google';
-import Link from 'next/link';
+import type { Metadata, Viewport } from 'next';
+import { Barlow_Condensed, Geist, Geist_Mono } from 'next/font/google';
 import { Suspense } from 'react';
-import { Nav, SeasonSelect } from '@/components/Nav';
-import { ago, stamp } from '@/lib/format';
-import { defaultYear, freshness, seasons } from '@/lib/queries';
+import { Rail } from '@/components/Nav';
+import { Palette } from '@/components/Palette';
+import { SpaceBackground } from '@/components/space/SpaceBackground';
+import { TeamPeek } from '@/components/TeamPeek';
+import { Toaster } from '@/components/ui';
+import { defaultYear, seasons } from '@/lib/queries';
 import './globals.css';
 
-const archivo = Archivo({ subsets: ['latin'], axes: ['wdth'], variable: '--font-archivo', display: 'swap' });
+const sans = Geist({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
+const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono', display: 'swap' });
+const display = Barlow_Condensed({ subsets: ['latin'], weight: ['500', '600', '700'], variable: '--font-display', display: 'swap' });
 
 export const metadata: Metadata = {
   title: { default: 'Overtime 1', template: '%s · Overtime 1' },
-  description: 'Season-isolated FRC robot ratings, calibrated match forecasts, playoff and alliance simulation, with published validation and a free public API.',
+  description: 'Find any FRC team fast. Team reports, alliance picking and match predictions with EDGE, from this season’s matches.',
 };
-
+export const viewport: Viewport = { themeColor: '#02030a', width: 'device-width', initialScale: 1 };
 export const dynamic = 'force-dynamic';
+
+// Applied before paint so Calm mode never flashes motion.
+const CALM = `try{localStorage.getItem('ot:calm')==='1'&&document.documentElement.setAttribute('data-calm','')}catch(e){}`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const years = seasons().map((s) => s.year);
   const year = defaultYear();
-  const f = freshness(year);
-  const failed = f.lastSync && f.lastSync.ok === 0;
   return (
-    <html lang="en" className={archivo.variable}>
+    <html lang="en" className={`${sans.variable} ${mono.variable} ${display.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: CALM }} />
+      </head>
       <body>
-        <div className="shell">
-          <aside className="rail">
-            <Link href="/" className="wordmark">
-              Overtime 1<span>FRC ratings &amp; forecasts</span>
-            </Link>
-            <Suspense>
-              <Nav />
-              <SeasonSelect years={years} fallback={year} />
-            </Suspense>
-            <div className="rail-foot">
-              {!f.tbaKeyConfigured ? <div className="warn">No TBA key configured. Showing stored data only.</div> : null}
-              {f.lastSuccess ? (
-                <div>
-                  TBA synced <strong>{ago(f.lastSuccess)}</strong>
-                </div>
-              ) : year ? (
-                <div>Never synced successfully</div>
-              ) : null}
-              {failed ? <div className="warn">Last sync failed {ago(f.lastSync!.finished_at)}: cached data in use</div> : null}
-              {f.dataAsOf ? <div>Results through {stamp(f.dataAsOf).replace(/, \d.*$/, '')}</div> : null}
-              <div style={{ marginTop: 8 }}>Data: The Blue Alliance</div>
-            </div>
-          </aside>
-          <main className="main" id="main">
-            {children}
-          </main>
-        </div>
+        <a className="skip" href="#main">
+          Skip to content
+        </a>
+        <SpaceBackground />
+        <Suspense>
+          <Rail fallback={year} />
+          <Palette years={years} fallback={year} />
+        </Suspense>
+        <main className="main" id="main">
+          {children}
+        </main>
+        <Toaster />
+        <TeamPeek />
       </body>
     </html>
   );

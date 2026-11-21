@@ -55,7 +55,7 @@ export class TeamAverage implements Predictor {
       const c = this.cnt.get(k);
       t += c ? this.sum.get(k)! / c : mu;
     }
-    return t / teams.length;
+    return teams.length ? t / teams.length : mu;
   }
 
   predict(m: MatchRow): Forecast | null {

@@ -34,11 +34,11 @@ Team ratings with uncertainty and reliability; match forecasts (scores, 80% inte
 
 ## Brand Commitments
 
-Name: "Overtime 1". Logo coming soon: do not invent a logo; use the name as a wordmark only. User brief bans: excessive rounded cards, pill buttons, random gradients, giant headings, excess whitespace, decorative icons, arbitrary dividers, generic SaaS dashboard templates, decorative charts.
+Name: "Overtime 1". Logo: original orbit-around-the-"1" mark (2026-11-20 brief). Direction: playful deep-space mission control; home is an explorable galaxy of teams; task-based navigation (Scout, Pick, Predict, Explore) with a ⌘K palette; one focused action per screen; no explanatory paragraphs on main screens (explanations behind "?" tips). Do not resemble match13.com (no sunset gradients, halftone art, centred pill nav, search hero, top-right season chip, entity-based nav or its tool names).
 
 ## Evidence on Hand
 
-Only real TBA data and model outputs. No placeholder or synthetic data in the UI (synthetic data exists only under test/). No TBA key is configured yet, so the UI must have honest empty states. No testimonials, users, or accuracy claims exist yet.
+Only real TBA data and model outputs. No placeholder or synthetic data in the UI (synthetic data exists only under test/). The UI must keep honest empty states when data is missing. No testimonials, users, or accuracy claims exist yet.
 
 ## Product Principles
 

@@ -1,3 +1,4 @@
+import { Tip } from '@/components/ui';
 import Link from 'next/link';
 import { NoData } from '@/components/bits';
 import { Calibration, Histogram } from '@/components/charts';
@@ -31,17 +32,17 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
     <>
       <div className="page-head">
         <div>
-          <h1>Analytics, {year}</h1>
-          <div className="sub">
-            Walk-forward validation: every forecast is made at match start from results public by then. All models are scored on the same {run.evaluated.toLocaleString()} matches;{' '}
-            {run.excluded.notEligible} early-season matches before the model had enough data are excluded for every model alike.
-          </div>
+          <h1>
+            Model accuracy <em>{year}</em>
+          </h1>
         </div>
+        <Tip label="How accuracy is measured">{`Every forecast was locked at match start. All models scored on the same ${run.evaluated.toLocaleString()} matches.`}</Tip>
       </div>
 
       <section className="section">
         <div className="section-head">
           <h2>Model comparison</h2>
+          <Tip label="About the models">Sorted by log loss (lower is better). Baselines: coin flip, team averages, OPR. No Statbotics comparison claimed.</Tip>
           <nav className="note" aria-label="Split">
             {splits.map((s, i) => (
               <span key={s}>
@@ -98,10 +99,6 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
             </tbody>
           </table>
         </div>
-        <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-          Sorted by log loss. Baselines: season average (always 50%), each team’s average alliance score, ridge-regularised OPR on total score (season-long and event-only). Ablations
-          switch one part of xPts on or off. No comparison with Statbotics is claimed here; see Methodology.
-        </p>
       </section>
 
       <div className="grid-2">
@@ -138,10 +135,14 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
             </div>
           ) : null}
           {main?.metrics.coverage ? (
-            <p style={{ fontSize: 13, marginTop: 8 }}>
-              Score intervals: {pct1(main.metrics.coverage.p50)} of alliance scores fell in the 50% interval, {pct1(main.metrics.coverage.p80)} in the 80% interval and{' '}
-              {pct1(main.metrics.coverage.p95)} in the 95% interval.
-            </p>
+            <dl className="kv" style={{ marginTop: 12 }}>
+              <dt>In 50% range</dt>
+              <dd>{pct1(main.metrics.coverage.p50)}</dd>
+              <dt>In 80% range</dt>
+              <dd>{pct1(main.metrics.coverage.p80)}</dd>
+              <dt>In 95% range</dt>
+              <dd>{pct1(main.metrics.coverage.p95)}</dd>
+            </dl>
           ) : null}
         </section>
         <section className="section">
@@ -176,7 +177,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
       <section className="section">
         <div className="section-head">
           <h2>How robots score</h2>
-          <span className="note">teams with ≥3 matches · all panels share one x-axis (0–{shared} xPts)</span>
+          <Tip label="About these charts">{`Teams with 3+ matches. Shared axis: 0–${shared} xPts.`}</Tip>
         </div>
         <div className="grid-3">
           {phaseVals.map(({ p, v }) => (
@@ -190,7 +191,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
       <section className="section">
         <div className="section-head">
           <h2>Season parameters</h2>
-          <span className="note">estimated online from {year} results only</span>
+          <Tip label="About these numbers">{`Learned from ${year} results only.`}</Tip>
         </div>
         <table className="agate">
           <thead>
@@ -229,7 +230,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
         <section className="section">
           <div className="section-head">
             <h2>Historical research</h2>
-            <span className="note">other seasons, each modelled in isolation; nothing here feeds {year} ratings</span>
+            <Tip label="About other seasons">{`Each season stands alone. Nothing here feeds ${year}.`}</Tip>
           </div>
           <table className="agate">
             <thead>

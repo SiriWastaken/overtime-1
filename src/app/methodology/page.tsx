@@ -1,21 +1,27 @@
+import Link from 'next/link';
 import { SUPPORTED_GAME_YEARS, seasonSpec } from '@/engine/seasons';
 import { DEFAULT_OPTIONS, MODEL_VERSION } from '@/engine/model';
 import { pts, stamp } from '@/lib/format';
+import { edgeCheckResults, seasonEdges } from '@/lib/edge';
 import { defaultYear, modelRun, modelRunHistory } from '@/lib/queries';
 
-export const metadata = { title: 'Methodology' };
+export const metadata = { title: 'How it works' };
 
 export default function Methodology() {
   const year = defaultYear();
   const run = year ? modelRun(year) : null;
   const history = year ? modelRunHistory(year) : [];
   const spec = year ? seasonSpec(year) : null;
+  const se = year ? seasonEdges(year) : null;
+  const checks = edgeCheckResults();
+  const runIds = new Map(checks.map((c) => [c.year, modelRun(c.year)?.id ?? null]));
+  const n0 = (x: number) => x.toLocaleString();
   return (
     <>
       <div className="page-head">
         <div>
-          <h1>Methodology</h1>
-          <div className="sub">How xPts ratings and forecasts are made, how they are tested, and where they fall short. Model {MODEL_VERSION}.</div>
+          <h1>How it works</h1>
+          <div className="sub">The full method, for the curious. Model {MODEL_VERSION}.</div>
         </div>
       </div>
       <article className="prose">
@@ -23,6 +29,150 @@ export default function Methodology() {
           <strong>The principle:</strong> a rating measures what a robot does this season. Every season starts from zero knowledge. No prior-season rating, reputation, team number or
           award history enters a current-season rating or forecast. Earlier seasons are only used to test the method, never as data for later ones.
         </p>
+
+        <h2 id="edge">EDGE</h2>
+        <p>
+          <strong>EDGE is how much a robot changes its alliance’s chance of winning, compared with a median robot in its place.</strong> It’s measured in percentage points: +18
+          means an alliance with this robot is expected to win about 18 more matches in every 100 than the same alliance with a median robot instead.
+        </p>
+        <h3>Four numbers that are easy to mix up</h3>
+        <table className="agate">
+          <thead>
+            <tr>
+              <th>Number</th>
+              <th>What it is</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="strong">Scores and results</td>
+              <td>What actually happened, from official FIRST data via The Blue Alliance.</td>
+            </tr>
+            <tr>
+              <td className="strong">xPts</td>
+              <td>The model’s estimate of the points a robot adds to its alliance’s margin per match.</td>
+            </tr>
+            <tr>
+              <td className="strong">EDGE</td>
+              <td>What that estimate implies for winning, compared with a median robot. A model-based what-if, never observed directly.</td>
+            </tr>
+            <tr>
+              <td className="strong">Match forecast</td>
+              <td>Win chance and score range for one specific six-robot match.</td>
+            </tr>
+          </tbody>
+        </table>
+        <h3>How it is calculated</h3>
+        <p>
+          Take the robot’s xPts. Draw a large set of realistic matches by picking two partners and three opponents at random from this season’s rated robots. In each, work out
+          the alliance’s chance of winning with this robot, then with a median robot, using the same match-to-match randomness the forecasts use. EDGE is the average difference.
+        </p>
+        <div className="eq">{`EDGE = average over matches k of [ P(win | robot, k) − P(win | median robot, k) ]
+P(win | x, k) = Φ( (partners − opponents + x) / σ_k )`}</div>
+        <p>
+          Averaging over many matches matters. A robot swings close matches more than blowouts, so its value depends on who it tends to play with and against, not on one
+          imagined average match. {se ? `This season, the median robot adds ${pts(se.ctx.replacement, 1)} points per match, from a pool of ${n0(se.ctx.poolSize)} robots with at least 3 matches.` : ''}
+        </p>
+        <h3>Why a median robot</h3>
+        <p>
+          The baseline is the season’s median rated robot: half are better, half are worse. The mean is pulled up by a few elite robots. A “replacement level” percentile like
+          baseball’s would be an arbitrary choice, and an event-by-event baseline would give the same robot different values in the same week. So by design, about half of all
+          robots have a negative EDGE. That says where a robot sits this season, not how good its team is.
+        </p>
+        <h3>How sure it is</h3>
+        <p>
+          EDGE rises steadily with xPts, so the model’s 80% range for a robot’s xPts converts directly into an 80% range for its EDGE. Robots with fewer than 8 matches are marked
+          “early”.
+        </p>
+        <h3>What it doesn’t measure</h3>
+        <ul>
+          <li>
+            <strong>Pairings.</strong> The model adds robots’ contributions together. It doesn’t estimate whether two robots work especially well together or compete for the
+            same game pieces.
+          </li>
+          <li>
+            <strong>Opponent-specific play.</strong> Defense is estimated, but not whether a robot does better or worse against strong opponents.
+          </li>
+          <li>
+            <strong>Cause and effect.</strong> EDGE is what the model implies, not the result of an experiment.
+          </li>
+          <li>
+            <strong>Top-end detail.</strong> An alliance can’t win more than every match, so EDGE bunches up near the ceiling. To separate elite robots, compare xPts.
+          </li>
+        </ul>
+        <h3>Is it right?</h3>
+        <p>
+          EDGE adds nothing new to fit, so the forecast tests on the <Link href="/analytics">Model accuracy</Link> page already cover its inputs. To check EDGE’s own units, we use the fact that if every robot were swapped for a median
+          one, the match would be even. So an alliance’s win chance should be about 50% plus its robots’ EDGEs minus the opponents’. Using only EDGE values known before each match:
+        </p>
+        {checks.length ? (
+          <>
+            <table className="agate">
+              <thead>
+                <tr>
+                  <th>Season</th>
+                  <th className="n">Matches</th>
+                  <th className="n" title="1.00 means a predicted advantage of x points matched an observed advantage of x points">
+                    Scale (ideal 1.00)
+                  </th>
+                  <th className="n" title="Brier score, lower is better">
+                    Brier: EDGE / xPts / coin
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {checks.map((c) => (
+                  <tr key={c.year}>
+                    <td>
+                      {c.year}
+                      {c.run !== runIds.get(c.year) ? <span className="provisional">out of date</span> : null}
+                    </td>
+                    <td className="n">{n0(c.splits.all.n)}</td>
+                    <td className="n strong">{c.splits.all.slope.toFixed(2)}</td>
+                    <td className="n">
+                      {c.splits.all.brier.edge.toFixed(3)} / {c.splits.all.brier.xpts.toFixed(3)} / {c.splits.all.brier.coinFlip.toFixed(3)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p>
+              What it shows: on average, EDGE’s units hold. But EDGE values don’t simply add up. Moderate advantages are understated and extreme ones overstated, because win
+              chance flattens out near 0% and 100%. That’s why match forecasts come from the full model (xPts beats the EDGE sum on the same matches), and EDGE is for
+              understanding a robot.
+            </p>
+            <details className="more-detail">
+              <summary>Calibration detail, {checks[0].year}</summary>
+              <table className="agate">
+                <thead>
+                  <tr>
+                    <th className="n">Predicted advantage</th>
+                    <th className="n">Observed advantage</th>
+                    <th className="n">Matches</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {checks[0].splits.all.bins.map((b) => (
+                    <tr key={b.lo}>
+                      <td className="n">{(100 * b.predicted).toFixed(0)}</td>
+                      <td className="n">{(100 * b.observed).toFixed(0)}</td>
+                      <td className="n muted">{n0(b.n)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p>
+                Advantage = red’s win chance minus 50%, in percentage points. Each season’s check rebuilds the robot pool and the noise estimate every 250 matches from earlier
+                forecasts only, so no later result leaks in. Run it with <code>npm run edge -- {checks[0].year}</code>.
+              </p>
+            </details>
+          </>
+        ) : (
+          <p className="notice">
+            <strong>Not run yet.</strong> The EDGE scale check hasn’t been run on this server. Run <code>npm run edge -- {year ?? 2026}</code> to produce it.
+          </p>
+        )}
+        <p>No comparison with Statbotics or other rating systems has been run, so none is claimed.</p>
 
         <h2>What xPts is</h2>
         <p>

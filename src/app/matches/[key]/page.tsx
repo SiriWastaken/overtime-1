@@ -1,3 +1,5 @@
+import { Fragment } from 'react';
+import { Tip } from '@/components/ui';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Empty, TeamLink } from '@/components/bits';
@@ -44,13 +46,16 @@ export default async function MatchPage({ params }: { params: Promise<{ key: str
       </div>
       <LineScore m={m} year={m.year} link={false} title="Line score" />
       {!f ? (
-        <Empty>No forecast is stored for this match (the event may not be an official event, or the season has not been modelled).</Empty>
+        <Empty>
+          <strong>No forecast.</strong>
+          Off-season or not rated yet.
+        </Empty>
       ) : (
         <>
           <section className="section">
               <div className="section-head">
                 <h2>Robot contributions</h2>
-                <span className="note">expected points per match, as known at forecast time</span>
+                <Tip label="About these numbers">Expected points per match, as known before this match.</Tip>
               </div>
               <div className="table-wrap">
                 <table className="agate">
@@ -66,7 +71,7 @@ export default async function MatchPage({ params }: { params: Promise<{ key: str
                         ))}
                       <th className="n">Scoring</th>
                       <th className="n" title="Expected reduction in opponents' scoring">
-                        Opp. supp.
+                        Defense
                       </th>
                       <th className="n">Fouls given</th>
                       <th className="n">±SD</th>
@@ -76,7 +81,7 @@ export default async function MatchPage({ params }: { params: Promise<{ key: str
                   <tbody>
                     {(['red', 'blue'] as const).map((c) =>
                       f[c].teams.map((t) => (
-                        <tr key={t.team} className={c === 'red' ? '' : ''}>
+                        <tr key={t.team} data-peek={t.team} data-year={m.year}>
                           <td>
                             <span className="side">
                               <span className={`swatch ${c}`} />
@@ -108,24 +113,38 @@ export default async function MatchPage({ params }: { params: Promise<{ key: str
               <div className="section-head">
                 <h2>Why this forecast</h2>
               </div>
-              <ul className="prose" style={{ fontSize: 13.5, paddingLeft: 18, margin: 0 }}>
-                <li>
-                  Expected margin {f.margin >= 0 ? 'Red' : 'Blue'} by <strong>{pts(Math.abs(f.margin), 0)}</strong> points, with an SD of {pts(f.marginSd, 0)}. So{' '}
-                  {f.margin >= 0 ? 'Red' : 'Blue'} wins {pct(Math.max(f.redWinProb, 1 - f.redWinProb))} of the time
-                  {f.tieProb >= 0.005 ? `; a tie is ${pct(f.tieProb)}` : ''}.
-                </li>
+              <dl className="kv glass">
+                <dt>Margin</dt>
+                <dd>
+                  <span className={f.margin >= 0 ? 'red-t' : 'blue-t'}>{f.margin >= 0 ? 'Red' : 'Blue'}</span> +{pts(Math.abs(f.margin), 0)}{' '}
+                  <span className="muted">± {pts(f.marginSd, 0)}</span>
+                </dd>
+                <dt>Win chance</dt>
+                <dd>
+                  {pct(Math.max(f.redWinProb, 1 - f.redWinProb))}
+                  {f.tieProb >= 0.005 ? <span className="muted"> · tie {pct(f.tieProb)}</span> : null}
+                </dd>
                 {factors.map(({ c, gap }) => (
-                  <li key={c.id}>
-                    {c.label}: <span className={gap > 0 ? 'red-t' : 'blue-t'}>{gap > 0 ? 'Red' : 'Blue'}</span> +{pts(Math.abs(gap), 1)}
-                    {c.attribution === 'opponent' ? ' (foul points the opponents are expected to give away)' : c.attribution === 'robot' ? ' (from per-robot records)' : ''}
-                  </li>
+                  <Fragment key={c.id}>
+                    <dt>{c.label}</dt>
+                    <dd>
+                      <span className={gap > 0 ? 'red-t' : 'blue-t'}>{gap > 0 ? 'Red' : 'Blue'}</span> +{pts(Math.abs(gap), 1)}
+                    </dd>
+                  </Fragment>
                 ))}
-                <li>
-                  {Math.round(paramShare * 100)}% of the margin’s uncertainty is from not knowing the robots well yet; the rest is ordinary match-to-match noise
-                  {thinnest ? `. Least data: ${thinnest.team.slice(3)} with ${thinnest.matches} prior matches` : ''}.
-                </li>
-                {!f.eligible ? <li>Too early in the season for an informed forecast; excluded from validation.</li> : null}
-              </ul>
+                <dt>
+                  Rating doubt <Tip label="What is rating doubt?">Share of the uncertainty from not knowing the robots well yet. The rest is match noise.</Tip>
+                </dt>
+                <dd>
+                  {Math.round(paramShare * 100)}%{thinnest ? <span className="muted"> · least data: {thinnest.team.slice(3)} ({thinnest.matches} matches)</span> : null}
+                </dd>
+                {!f.eligible ? (
+                  <>
+                    <dt>Note</dt>
+                    <dd>Too early in the season; not scored.</dd>
+                  </>
+                ) : null}
+              </dl>
               {f.red.rp || f.blue.rp ? (
                 <table className="agate" style={{ marginTop: 12 }}>
                   <thead>

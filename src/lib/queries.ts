@@ -323,3 +323,23 @@ export function eventAccuracy(eventKey: string) {
   }
   return { n: rows.length, accuracy: decided ? correct / decided : null, brier: rows.length ? brier / rows.length : null };
 }
+
+/** Latest sync run per season, for the data-sources page. */
+export function latestSyncs() {
+  return db()
+    .prepare(
+      `SELECT s.* FROM sync_runs s JOIN (SELECT year, MAX(id) id FROM sync_runs GROUP BY year) l ON l.id = s.id ORDER BY s.year DESC`
+    )
+    .all() as {
+    year: number;
+    started_at: number;
+    finished_at: number | null;
+    ok: number | null;
+    requests: number;
+    not_modified: number;
+    cache_hits: number;
+    errors: number;
+    changed: number;
+    message: string | null;
+  }[];
+}

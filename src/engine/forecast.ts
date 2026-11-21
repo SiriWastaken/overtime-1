@@ -20,7 +20,7 @@ export interface Noise {
   scaling?: { level: number; p: number; marginP: number };
 }
 
-const scale = (noise: Noise, mu: number, p: number) => (noise.scaling && noise.scaling.level > 0 ? Math.pow(Math.max(mu, noise.scaling.level / 4) / noise.scaling.level, p) : 1);
+export const scale = (noise: Noise, mu: number, p: number) => (noise.scaling && noise.scaling.level > 0 ? Math.pow(Math.max(mu, noise.scaling.level / 4) / noise.scaling.level, p) : 1);
 
 export interface QuickSide {
   mean: number;

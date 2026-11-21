@@ -1,11 +1,23 @@
 import Link from 'next/link';
 import { pct, teamNum } from '@/lib/format';
 import type { TeamMeta } from '@/lib/queries';
+import { hot } from './edge';
 
-export function TeamLink({ team, meta, year, name = true }: { team: string; meta?: TeamMeta | null; year?: number; name?: boolean }) {
+/** The team's FIRST avatar (via TBA); a transparent placeholder when there isn't one, so rows stay aligned. */
+export function Avatar({ team, year, size = 20 }: { team: string | number; year?: number | null; size?: number }) {
+  if (!year) return null;
+  const n = String(team).replace(/^frc/, '');
+  return <img className="avatar" src={`/api/v1/avatars/${n}?year=${year}`} width={size} height={size} alt="" loading="lazy" decoding="async" />;
+}
+
+/** Team number (accent only for the season's top 10 by EDGE) and nickname. */
+export function TeamLink({ team, meta, year, name = true, rank }: { team: string; meta?: TeamMeta | null; year?: number; name?: boolean; rank?: number | null }) {
   return (
     <Link className="team" href={`/teams/${teamNum(team)}${year ? `?year=${year}` : ''}`}>
-      <span className="team-num">{teamNum(team)}</span>
+      <Avatar team={team} year={year} />
+      <span className={`team-num${hot(rank)}`}>
+        {teamNum(team)}
+      </span>
       {name && meta?.nickname ? <span className="team-name">{meta.nickname}</span> : null}
     </Link>
   );
@@ -44,12 +56,24 @@ export function Empty({ children }: { children: React.ReactNode }) {
   return <div className="empty">{children}</div>;
 }
 
+/** Recent form: the last few post-match scoring estimates. Tinted when the trend is clear. */
+export function Spark({ values, trend = 0 }: { values?: number[]; trend?: number }) {
+  if (!values || values.length < 2) return <span className="spark-line none" aria-hidden />;
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  const pts = values.map((v, i) => `${((i / (values.length - 1)) * 60).toFixed(1)},${(16 - ((v - lo) / (hi - lo || 1)) * 14).toFixed(1)}`).join(' ');
+  return (
+    <svg className={`spark-line${trend > 0 ? ' up' : trend < 0 ? ' down' : ''}`} viewBox="0 0 60 18" width="60" height="18" role="img" aria-label={trend > 0 ? 'Heating up' : trend < 0 ? 'Cooling off' : 'Steady'}>
+      <polyline points={pts} fill="none" />
+    </svg>
+  );
+}
+
 export function NoData({ year }: { year: number | null }) {
   return (
-    <div className="notice">
-      <strong>No {year ?? ''} data synced yet.</strong> Overtime 1 shows only real data from The Blue Alliance. Set <code>TBA_API_KEY</code> in{' '}
-      <code>.env.local</code>, then run <code>npm run update -- {year ?? new Date().getFullYear()}</code> (sync and model). The server also refreshes the current season
-      automatically when a key is configured.
+    <div className="empty">
+      <strong>Clock hasn’t started.</strong>
+      Sync {year ?? 'a season'} first: <code>npm run update -- {year ?? new Date().getFullYear()}</code>
     </div>
   );
 }
