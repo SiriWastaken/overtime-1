@@ -125,7 +125,7 @@ export function RatingsTable({
             </th>
             <th scope="col">Team</th>
             {edges ? (
-              <H k="edge" cls="gauge-cell" title="Wins per 100 matches vs a median robot. Left of centre hurts, right helps.">
+              <H k="edge" cls="gauge-cell" title="Win-chance points vs a median robot. Left of centre hurts, right helps.">
                 EDGE
               </H>
             ) : null}

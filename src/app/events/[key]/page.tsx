@@ -57,6 +57,11 @@ export default async function EventPage({ params, searchParams }: { params: Prom
               <small>favourite won ({acc.n})</small>
             </div>
           ) : null}
+          <div className="fact">
+            <Link href={`/lab?year=${ev.year}&tab=alliance&event=${key}`} className="button ghost small" style={{ height: 'auto', padding: '6px 12px' }}>
+              Alliance Mode ⚡
+            </Link>
+          </div>
         </div>
       </div>
       {!rated ? (

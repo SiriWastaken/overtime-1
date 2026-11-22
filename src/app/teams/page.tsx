@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { Empty, NoData } from '@/components/bits';
+import { Galaxy } from '@/components/Galaxy';
+import { seasonSpec } from '@/engine/seasons';
 import { RatingsTable, sortRows, type SortKey } from '@/components/RatingsTable';
-import { Tip } from '@/components/ui';
+import { Tip, Why } from '@/components/ui';
 import { seasonEdges } from '@/lib/edge';
-import { seasonForm } from '@/lib/galaxy';
+import { galaxy, seasonForm } from '@/lib/galaxy';
 import { modelRun, resolveYear, teamRatings } from '@/lib/queries';
 
 export const metadata = { title: 'Teams' };
@@ -15,6 +17,10 @@ export default async function Teams({ searchParams }: { searchParams: Promise<Re
   const sp = await searchParams;
   const year = resolveYear(sp.year);
   if (!year || !modelRun(year)) return <NoData year={year} />;
+  const myKey = (await cookies()).get('ot_myteam')?.value;
+  const map = sp.view !== 'list' && !sp.q && !sp.sort && !sp.page ? galaxy(year) : null;
+  if (map)
+    return <Galaxy data={map} mine={Number(myKey?.slice(3)) || null} title={`${year} ${seasonSpec(year).game}`} />;
   const q = (sp.q ?? '').slice(0, 60);
   const edges = seasonEdges(year)?.byTeam;
   const sort = (KEYS.includes(sp.sort as SortKey) ? sp.sort : edges ? 'edge' : 'net') as SortKey;
@@ -22,22 +28,29 @@ export default async function Teams({ searchParams }: { searchParams: Promise<Re
   const { total, rows } = teamRatings(year, { q: q || undefined });
   const sorted = sortRows(year, rows, sort, edges);
   const shown = sorted.slice((page - 1) * PAGE, page * PAGE);
-  const myKey = (await cookies()).get('ot_myteam')?.value;
   const mine = myKey ? (teamRatings(year).rows.find((r) => r.key === myKey) ?? null) : null;
   const href = (o: Partial<{ sort: string; page: number }>) => {
-    const p = new URLSearchParams({ year: String(year), ...(q ? { q } : {}), sort: o.sort ?? sort, page: String(o.page ?? 1) });
+    const p = new URLSearchParams({ year: String(year), view: 'list', ...(q ? { q } : {}), sort: o.sort ?? sort, page: String(o.page ?? 1) });
     return `/teams?${p}`;
   };
   return (
     <>
       <div className="page-head">
         <h1>
-          Teams <em>{year}</em>
+          All teams <em>{year}</em>
         </h1>
-        <Tip label="How are teams ranked?">Ranked by EDGE. Tap a row for the card. Pin your team from its card.</Tip>
+        <Why
+          title="Team Rankings (EDGE & xPts)"
+          method="Teams are ranked by EDGE (win-chance points gained over a median robot across simulated match contexts). Point estimates (xPts) are derived from Bayesian ridge regression with exact partner credit splitting."
+          inputs={['All official qualification and playoff matches', 'Score breakdown objects', 'Previous season ratings for Bayesian priors']}
+        />
+        <Link href={`/teams?year=${year}`} className="button ghost">
+          Map
+        </Link>
       </div>
       <form className="inline" action="/teams" role="search">
         <input type="hidden" name="year" value={year} />
+        <input type="hidden" name="view" value="list" />
         {sort !== (edges ? 'edge' : 'net') ? <input type="hidden" name="sort" value={sort} /> : null}
         <label className="sr-only" htmlFor="q">
           Filter teams
@@ -45,11 +58,11 @@ export default async function Teams({ searchParams }: { searchParams: Promise<Re
         <input id="q" type="search" name="q" defaultValue={q} placeholder="Number, name or city" style={{ width: 300, maxWidth: '100%' }} />
         <button type="submit">Filter</button>
         {q ? (
-          <Link href={`/teams?year=${year}`} className="button ghost">
+          <Link href={`/teams?year=${year}&view=list`} className="button ghost">
             Clear
           </Link>
         ) : null}
-        <span className="muted" style={{ fontSize: 13 }}>
+        <span className="muted">
           {q ? `${rows.length} found` : `${total.toLocaleString()} teams`}
         </span>
       </form>
@@ -57,7 +70,7 @@ export default async function Teams({ searchParams }: { searchParams: Promise<Re
         <RatingsTable year={year} rows={shown} edges={edges} form={seasonForm(year)} mine={mine} sort={sort} sortHref={(k) => href({ sort: k })} />
       ) : (
         <Empty>
-          <strong>Sudden death: no match.</strong>
+          <strong>Nobody matches that.</strong>
           Nothing for “{q}”. Try a number or city.
         </Empty>
       )}

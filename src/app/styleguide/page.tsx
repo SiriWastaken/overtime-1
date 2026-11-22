@@ -1,7 +1,7 @@
 import { RatingsTable, sortRows } from '@/components/RatingsTable';
 import { Spark, WinBar } from '@/components/bits';
 import { EdgeGauge } from '@/components/edge';
-import { Tug } from '@/components/Tug';
+import { notFound } from 'next/navigation';
 import { Tip } from '@/components/ui';
 import { seasonEdges } from '@/lib/edge';
 import { seasonForm } from '@/lib/galaxy';
@@ -25,6 +25,7 @@ const SWATCHES: [string, string][] = [
 ];
 
 export default function Styleguide() {
+  if (process.env.NODE_ENV === 'production') notFound(); // a dev reference, not a product screen
   const year = defaultYear();
   const se = year ? seasonEdges(year) : null;
   const rows = year && se ? sortRows(year, teamRatings(year).rows, 'edge', se.byTeam).slice(0, 5) : [];
@@ -71,7 +72,6 @@ export default function Styleguide() {
             <span className="team-num">2056</span>
             <Spark values={[40, 44, 43, 50, 55, 61]} trend={1} />
           </div>
-          <Tug redP={0.63} red={{ mean: 132, lo80: 110, hi80: 154 }} blue={{ mean: 118, lo80: 95, hi80: 140 }} />
         </div>
       </section>
 
@@ -80,7 +80,7 @@ export default function Styleguide() {
         <div className="tiles">
           <div className="tile hero-tile">
             <small>
-              EDGE · extra wins per 100 matches <Tip>Compared with a median robot.</Tip>
+              EDGE · win-chance points vs a median robot <Tip>Compared with a median robot.</Tip>
             </small>
             <EdgeGauge edge={0.48} lo={0.41} hi={0.52} size="lg" />
           </div>
@@ -115,12 +115,12 @@ export default function Styleguide() {
         <h2 className="sg-h">States</h2>
         <div className="grid-3">
           <div className="empty">
-            <strong>Sudden death: no match.</strong>
+            <strong>Nobody matches that.</strong>
             Try another team.
           </div>
-          <div className="empty">Clock’s running…</div>
+          <div className="empty">Warming up…</div>
           <div className="notice">
-            <strong>Timeout.</strong> Try again in a moment.
+            <strong>That didn’t load.</strong> Try again in a moment.
           </div>
         </div>
       </section>

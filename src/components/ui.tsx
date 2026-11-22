@@ -1,51 +1,35 @@
 'use client';
 
-// Small interactive primitives: logo (with easter egg), calm toggle, "?" tooltip, count-up number, toaster.
+// Small interactive primitives: logo, "?" tooltip, "Why" popovers, uncertainty fuzz, toaster.
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { addToPicklist, getMyTeam, getPicklist, motionOk, setCalm, setMyTeam, setPicklist, toast } from '@/lib/fx';
 
-/** Original mark: a "1" with a dot on its orbit. Five quick clicks (or the Konami code) engage warp (an easter egg). */
-export function Logo() {
-  const clicks = useRef<number[]>([]);
+/** Original mark: a "1" with a dot on its orbit. Speeds up when simulations run. */
+export function Logo({ simulating }: { simulating?: boolean }) {
+  const [active, setActive] = useState(Boolean(simulating));
+
   useEffect(() => {
-    const seq = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
-    let i = 0;
-    const onKey = (e: KeyboardEvent) => {
-      i = e.key === seq[i] ? i + 1 : e.key === seq[0] ? 1 : 0;
-      if (i === seq.length) {
-        i = 0;
-        warp();
-      }
+    const onStart = () => setActive(true);
+    const onStop = () => setActive(false);
+    window.addEventListener('ot:simulating', onStart);
+    window.addEventListener('ot:simulated', onStop);
+    return () => {
+      window.removeEventListener('ot:simulating', onStart);
+      window.removeEventListener('ot:simulated', onStop);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
   }, []);
-  const onClick = (e: React.MouseEvent) => {
-    const now = Date.now();
-    clicks.current = [...clicks.current.filter((t) => now - t < 1500), now];
-    if (clicks.current.length >= 5) {
-      e.preventDefault();
-      clicks.current = [];
-      warp();
-    }
-  };
+
   return (
-    <svg className="logo" viewBox="0 0 32 32" aria-hidden onClick={onClick}>
-      <ellipse cx="16" cy="16" rx="13" ry="7" transform="rotate(-25 16 16)" fill="none" stroke="rgba(63,230,255,.45)" strokeWidth="1" />
-      <path d="M13.2 10.4 17 8v16M13 24h8" fill="none" stroke="#eceef1" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="4.2" cy="19.6" r="2" fill="#3fe6ff" />
+    <svg className={`logo${active ? ' simulating' : ''}`} viewBox="0 0 32 32" aria-hidden>
+      <g className="logo-orbit-group">
+        <ellipse cx="16" cy="16" rx="13" ry="7" transform="rotate(-25 16 16)" fill="none" stroke="var(--line-2)" strokeWidth="1" />
+        <circle className="logo-dot" cx="4.2" cy="19.6" r="2.2" fill="var(--accent)" />
+      </g>
+      <path d="M13.2 10.4 17 8v16M13 24h8" fill="none" stroke="var(--text)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
-}
-
-function warp() {
-  const html = document.documentElement;
-  if (!motionOk()) return toast('Warp drive needs Calm mode off');
-  html.setAttribute('data-warp', '');
-  toast('Warp speed engaged');
-  setTimeout(() => html.removeAttribute('data-warp'), 1700);
 }
 
 export function useCalm() {
@@ -57,16 +41,6 @@ export function useCalm() {
     return () => window.removeEventListener('ot:calm', sync);
   }, []);
   return on;
-}
-
-export function CalmToggle({ className = 'calm-toggle', children = 'Calm mode' }: { className?: string; children?: React.ReactNode }) {
-  const on = useCalm();
-  return (
-    <button type="button" role="switch" aria-checked={on} className={className} onClick={() => setCalm(!on)}>
-      {children}
-      <span className="switch" aria-hidden />
-    </button>
-  );
 }
 
 /** Pins this team's row in tables and marks its star in the galaxy. */
@@ -82,15 +56,15 @@ export function MyTeamButton({ team }: { team: string }) {
   return (
     <button
       type="button"
-      className="ghost"
+      className="link"
       aria-pressed={mine}
       onClick={() => {
         setMyTeam(mine ? null : team);
-        toast(mine ? 'Unpinned' : `${team.slice(3)} is your team`);
+        toast(mine ? 'Unpinned.' : `${team.slice(3)} is your team. It starts as captain.`);
         router.refresh();
       }}
     >
-      {mine ? 'My team ✓' : 'Make my team'}
+      {mine ? 'Your team · Unpin' : 'This is my team'}
     </button>
   );
 }
@@ -107,6 +81,152 @@ export function Tip({ children, label = 'What is this?', align }: { children: Re
         {children}
       </span>
     </span>
+  );
+}
+
+/**
+ * "Why" popover: Show your work with inputs, method, and uncertainty.
+ * Every rating, prediction, and metric provides access to its underlying derivation.
+ */
+export function Why({
+  title,
+  value,
+  inputs,
+  method,
+  uncertainty,
+  sampleSize,
+  align = 'right',
+}: {
+  title: string;
+  value?: string | number;
+  inputs?: string[];
+  method: string;
+  uncertainty?: string;
+  sampleSize?: number | string;
+  align?: 'left' | 'right';
+}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+
+  return (
+    <span className={`why-wrap ${align}`}>
+      <button
+        type="button"
+        className="why-btn"
+        aria-label={`Why: ${title}`}
+        aria-expanded={open}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        why
+      </button>
+      {open ? (
+        <>
+          <div
+            className="why-backdrop"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(false);
+            }}
+          />
+          <div className="why-card" role="dialog" aria-modal="false" id={id} onClick={(e) => e.stopPropagation()}>
+            <div className="why-header">
+              <span className="why-title">{title}</span>
+              {value !== undefined ? <span className="why-val">{value}</span> : null}
+              <button
+                type="button"
+                className="why-close"
+                onClick={() => setOpen(false)}
+                aria-label="Close explanation"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="why-body">
+              {inputs && inputs.length > 0 ? (
+                <div className="why-section">
+                  <span className="why-label">Inputs</span>
+                  <ul className="why-list">
+                    {inputs.map((inp, i) => (
+                      <li key={i}>{inp}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <div className="why-section">
+                <span className="why-label">Method</span>
+                <p className="why-text">{method}</p>
+              </div>
+              {uncertainty ? (
+                <div className="why-section">
+                  <span className="why-label">Uncertainty</span>
+                  <p className="why-text">{uncertainty}</p>
+                </div>
+              ) : null}
+              {sampleSize !== undefined ? (
+                <div className="why-footer">
+                  <span className="muted">Sample size:</span> <strong>{sampleSize}</strong>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * Rating bar with live uncertainty "fuzz".
+ * Shimmers subtly to reflect posterior standard error (sigma).
+ */
+export function UncertaintyFuzzBar({
+  value,
+  sd,
+  min = 0,
+  max = 100,
+  label,
+  color = 'var(--accent)',
+}: {
+  value: number;
+  sd?: number;
+  min?: number;
+  max?: number;
+  label?: string;
+  color?: string;
+}) {
+  const span = Math.max(1, max - min);
+  const pct = Math.max(0, Math.min(100, ((value - min) / span) * 100));
+  const halfFuzz = sd ? Math.min(30, (sd / span) * 100) : 0;
+  const lo = Math.max(0, pct - halfFuzz);
+  const hi = Math.min(100, pct + halfFuzz);
+
+  return (
+    <div className="fuzz-wrap" title={`${label ?? 'Rating'}: ${value.toFixed(1)}${sd ? ` (±${sd.toFixed(1)} SD)` : ''}`}>
+      <div className="fuzz-track">
+        {sd ? (
+          <div
+            className="fuzz-zone"
+            style={{
+              left: `${lo}%`,
+              width: `${Math.max(4, hi - lo)}%`,
+              backgroundColor: color,
+            }}
+          />
+        ) : null}
+        <div
+          className="fuzz-point"
+          style={{
+            left: `${pct}%`,
+            backgroundColor: color,
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -150,10 +270,10 @@ export function PicklistButton({ team, year }: { team: string; year: number }) {
         const n = team.slice(3);
         if (on) {
           setPicklist(year, getPicklist(year).filter((t) => t !== team));
-          toast(`${n} removed from picklist`);
+          toast(`${n} off your list.`);
         } else {
           addToPicklist(year, team);
-          toast(`${n} added to your picklist`);
+          toast(`${n} on your list.`);
         }
       }}
     >

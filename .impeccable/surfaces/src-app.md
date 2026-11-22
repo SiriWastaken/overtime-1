@@ -5,13 +5,13 @@ primary_target: "src/app"
 related_targets: []
 ---
 
-Scope: whole app shell and all routes (explore, scout, pick, predict, directory, teams/[n], events, matches, analytics, methodology, developers). Mode: Operate (methodology/developers lean Read).
-Audience/job: event-day strategists (fast scan, phones) and desk analysts (transparency). Constraints: real TBA data only, honest empty states, no logo yet.
+Scope: whole app shell and all routes. Home `/` is Pick (alliance selection); Teams (map + list); Settings in the palette; events, matches, analytics, methodology, developers are demoted links. Mode: Operate.
+Audience/job: a scouting lead at alliance selection (2–3 minutes, phone/tablet, noisy). Constraints: real TBA data only, honest empty states.
 
 ## Direction contract
-FORM: mission control in deep space, restructured 2026-11-21 so nothing reads as match13 (no pill nav, no search hero, no top-right season chip, no entity nav).
-THESIS: One unmistakable first action (Find a team + search + Top 10) beside a legible team map; task-based navigation (Scout, Pick, Predict, Explore) with a ⌘K palette.
-OWN-WORLD: near-black space (no hue 250–320°), neutral greys, one cyan accent; green/red-orange only for EDGE; two surface levels, hairlines, no blur or glow except the map's top 10 and selection; Barlow Condensed + Geist, five type sizes.
-FIRST VIEWPORT: left rail; left column "Find a team.", search, open Top 10; right, the team map (density zoomed out, dots zoomed in). Phones: map band, then search and list.
-SIGNATURE: search flies the map to a team; launch pad (triangle pads, win-chance rope, suggested picks); EDGE always as one diverging gauge.
+FORM: a draft board under a clock, flat near-black.
+THESIS: "Who should we pick next, and why?" answered in one panel: best fit, its Fit number, one Pick button.
+OWN-WORLD: near-black, neutral greys, one cyan accent; green/red-orange only for direction (Fit/EDGE) and the late clock; no background decoration; Barlow Condensed numbers + Geist UI; five type sizes.
+FIRST VIEWPORT: "Alliance selection" + event switch; three seats; win chance; best fit with its button; the list begins. Desktop: the team map on the right.
+SIGNATURE: the draft clock (taken/declined, live re-rank, overtime count-up); Fit that shrinks as your alliance gets stronger.
 RAISES: calm mode + reduced motion; ≥44px targets; zero paragraphs on main screens.

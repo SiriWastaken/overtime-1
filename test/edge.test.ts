@@ -77,3 +77,24 @@ describe('EDGE scale check', () => {
     assert.deepEqual(checkEdgeScale(a), checkEdgeScale(shuffled));
   });
 });
+
+describe('Fit (EDGE with pinned partners)', () => {
+  const p = pool();
+  const best = [...p].sort((a, b) => b.net - a.net);
+  const candidate = best[10];
+  const lift = (partners: NetEstimate[]) => {
+    const c = edgeContext(p, noise, 8000, 1, partners)!;
+    const [e] = computeEdges([candidate], c);
+    return e.edge;
+  };
+
+  it('pins the given seats and still ranks candidates by net', () => {
+    const c = edgeContext(p, noise, 4000, 1, [best[0], best[1]])!;
+    const e = computeEdges(best.slice(2, 40), c);
+    for (let i = 1; i < e.length; i++) assert.ok(e[i].edge <= e[i - 1].edge);
+  });
+
+  it('shrinks next to strong partners (they already win most matches)', () => {
+    assert.ok(lift([best[0], best[1]]) < lift([]));
+  });
+});

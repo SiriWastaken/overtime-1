@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { GalaxyData } from '@/lib/galaxy';
-import { motionOk, peek } from '@/lib/fx';
-import { Avatar } from './bits';
-import { EdgeGauge, hot } from './edge';
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { GalaxyData } from "@/lib/galaxy";
+import { motionOk, peek } from "@/lib/fx";
+import { Avatar } from "./bits";
+import { EdgeGauge, hot } from "./edge";
 
 const K_MIN = 1;
 const K_MAX = 40;
@@ -23,21 +23,33 @@ interface Cam {
  */
 function spread(v: number[]) {
   const s = [...v].sort((a, b) => a - b);
-  const q = (p: number) => s[Math.min(s.length - 1, Math.floor(p * (s.length - 1)))];
+  const q = (p: number) =>
+    s[Math.min(s.length - 1, Math.floor(p * (s.length - 1)))];
   const med = q(0.5);
   const iqr = q(0.75) - q(0.25) || 1;
   const t = v.map((x) => Math.asinh((x - med) / (iqr / 2)));
   const span = Math.max(...t.map(Math.abs)) || 1;
   return t.map((x) => 50 + (x / span) * 45);
 }
-const smooth = (a: number, b: number, x: number) => Math.min(1, Math.max(0, (x - a) / (b - a)));
+const smooth = (a: number, b: number, x: number) =>
+  Math.min(1, Math.max(0, (x - a) / (b - a)));
 
 /**
  * Home: a search-first column (headline, search, Top 10) beside the map of every team.
  * Map: offense up, defense across (median at the centre lines). Zoomed out it shows density and the top 10; zoomed in
  * every team is a dot (brighter = more EDGE) with non-overlapping labels. Hover for a tooltip, click for the card.
  */
-export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number | null; title: string }) {
+export function Galaxy({
+  data,
+  mine,
+  title,
+  bare = false,
+}: {
+  data: GalaxyData;
+  mine: number | null;
+  title: string;
+  bare?: boolean;
+}) {
   const N = data.n.length;
   const cvs = useRef<HTMLCanvasElement>(null);
   const cam = useRef<Cam>({ x: 50, y: 50, k: 1 });
@@ -46,15 +58,28 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
   const picked = useRef(-1);
   const raf = useRef(0);
   const flight = useRef(0);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
-  const [tip, setTip] = useState<{ i: number; x: number; y: number } | null>(null);
+  const [tip, setTip] = useState<{ i: number; x: number; y: number } | null>(
+    null,
+  );
   const [full, setFull] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
+  const zoomedRef = useRef(false);
 
   const px = useMemo(() => spread(data.x), [data]);
   const py = useMemo(() => spread(data.y), [data]);
-  const order = useMemo(() => [...Array(N).keys()].filter((i) => data.e[i] !== null).sort((a, b) => data.e[b]! - data.e[a]!), [data, N]);
-  const rankOf = useMemo(() => new Map(order.map((i, r) => [i, r + 1])), [order]);
+  const order = useMemo(
+    () =>
+      [...Array(N).keys()]
+        .filter((i) => data.e[i] !== null)
+        .sort((a, b) => data.e[b]! - data.e[a]!),
+    [data, N],
+  );
+  const rankOf = useMemo(
+    () => new Map(order.map((i, r) => [i, r + 1])),
+    [order],
+  );
   const byNum = useMemo(() => new Map(data.n.map((n, i) => [n, i])), [data]);
   const mineIdx = mine !== null ? (byNum.get(mine) ?? -1) : -1;
   const eMax = Math.max(0.01, data.e[order[0]] ?? 0.01);
@@ -62,7 +87,12 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
   const frame = useCallback(() => {
     const { w, h } = size.current;
     const m = w < 500 ? 20 : 44;
-    return { sx: Math.max(w - 2 * m, 40) / 100, sy: Math.max(h - 2 * m, 40) / 100, ox: w / 2, oy: h / 2 };
+    return {
+      sx: Math.max(w - 2 * m, 40) / 100,
+      sy: Math.max(h - 2 * m, 40) / 100,
+      ox: w / 2,
+      oy: h / 2,
+    };
   }, []);
   const worldToScreen = useCallback(
     (x: number, y: number) => {
@@ -70,28 +100,39 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
       const c = cam.current;
       return [ox + (x - c.x) * sx * c.k, oy - (y - c.y) * sy * c.k] as const;
     },
-    [frame]
+    [frame],
   );
-  const toScreen = useCallback((i: number) => worldToScreen(px[i], py[i]), [worldToScreen, px, py]);
+  const toScreen = useCallback(
+    (i: number) => worldToScreen(px[i], py[i]),
+    [worldToScreen, px, py],
+  );
 
   // ---------------------------------------------------------------- drawing (on demand only)
   const draw = useCallback(() => {
     raf.current = 0;
     const c = cvs.current;
     if (!c) return;
-    const ctx = c.getContext('2d')!;
+    const ctx = c.getContext("2d")!;
     const { w, h, dpr } = size.current;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     const k = cam.current.k;
     const css = getComputedStyle(document.documentElement);
-    const font = css.getPropertyValue('--font-display') || 'sans-serif';
-    const sans = css.getPropertyValue('--font-sans') || 'sans-serif';
-    const detail = smooth(DETAIL[0], DETAIL[1], k);
+    const font = css.getPropertyValue("--font-display") || "sans-serif";
+    const sans = css.getPropertyValue("--font-sans") || "sans-serif";
+    // a small field (one event) is always dots: density hexes only help with thousands of teams
+    const detail = N < 200 ? 1 : smooth(DETAIL[0], DETAIL[1], k);
+    const TEXT = css.getPropertyValue("--text") || "#eceef1";
+    const ACCENT = css.getPropertyValue("--accent") || "#3fe6ff";
+    const zoomedIn = detail >= 0.5;
+    if (zoomedIn !== zoomedRef.current) {
+      zoomedRef.current = zoomedIn;
+      setZoomed(zoomedIn);
+    }
 
-    // medians + quadrant names: the only chart furniture
+    // the medians: the only chart furniture
     const [mx, my] = worldToScreen(50, 50);
-    ctx.strokeStyle = 'rgba(255,255,255,.1)';
+    ctx.strokeStyle = "rgba(255,255,255,.1)";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(Math.round(mx) + 0.5, 0);
@@ -99,20 +140,7 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
     ctx.moveTo(0, Math.round(my) + 0.5);
     ctx.lineTo(w, Math.round(my) + 0.5);
     ctx.stroke();
-    ctx.font = `500 12px ${sans}`;
-    ctx.fillStyle = 'rgba(169,176,186,.8)';
-    const corner = (x: number, y: number, t: string, align: CanvasTextAlign) => {
-      const [X, Y] = worldToScreen(x, y);
-      ctx.textAlign = align;
-      ctx.fillText(t, X, Y);
-    };
-    // quadrant names sit beside the median lines, away from the corners where standouts live (not in the phone band)
-    if (w >= 500 || h >= 400) {
-      corner(49, 99, '← Offense-first', 'right');
-      corner(51, 99, 'Strong both ways →', 'left');
-      corner(51, 2, 'Defense-first →', 'left');
-    }
-    ctx.textAlign = 'left';
+    ctx.textAlign = "left";
 
     // zoomed out: density hexes, binned in screen space
     if (detail < 1) {
@@ -132,7 +160,7 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
       }
       ctx.globalAlpha = 1 - detail;
       for (const [key, n] of bins) {
-        const [col, row] = key.split(',').map(Number);
+        const [col, row] = key.split(",").map(Number);
         const cx = col * hw + (row & 1 ? hw / 2 : 0);
         const cy = row * 1.5 * R;
         ctx.fillStyle = `rgba(200,214,228,${(0.04 + 0.42 * (n / top) ** 0.7).toFixed(3)})`;
@@ -165,7 +193,11 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
 
     // standouts: the top 10 always (the only glow); more labels as you zoom in, never overlapping
     const taken: [number, number, number][] = [];
-    const fits = (x: number, y: number, tw: number) => !taken.some(([tx, ty, ww]) => x < tx + ww + 6 && tx < x + tw + 6 && Math.abs(ty - y) < 16);
+    const fits = (x: number, y: number, tw: number) =>
+      !taken.some(
+        ([tx, ty, ww]) =>
+          x < tx + ww + 6 && tx < x + tw + 6 && Math.abs(ty - y) < 16,
+      );
     const budget = 10 + Math.round(detail * k * 8);
     let shown = 0;
     for (const i of order) {
@@ -175,11 +207,13 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
       const [X, Y] = toScreen(i);
       if (X < 0 || X > w || Y < 0 || Y > h) continue;
       if (top10) {
-        ctx.fillStyle = 'rgba(63,230,255,.2)';
+        ctx.fillStyle = ACCENT;
+        ctx.globalAlpha = 0.2;
         ctx.beginPath();
         ctx.arc(X, Y, 7, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = '#eceef1';
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = TEXT;
         ctx.beginPath();
         ctx.arc(X, Y, 3, 0, Math.PI * 2);
         ctx.fill();
@@ -188,16 +222,29 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
       ctx.font = `600 ${top10 ? 16 : 14}px ${font}`;
       const label = String(data.n[i]);
       const tw = ctx.measureText(label).width;
-      const lx = X + 8;
-      if (!fits(lx, Y, tw)) continue;
-      taken.push([lx, Y, tw]);
-      ctx.fillStyle = top10 ? '#eceef1' : 'rgba(236,238,241,.75)';
-      ctx.fillText(label, lx, Y + 5);
+      // right, left, above, below: the first spot that is free (standouts in a cluster still get a label)
+      const spot = [
+        [X + 8, Y],
+        [X - 8 - tw, Y],
+        [X - tw / 2, Y - 16],
+        [X - tw / 2, Y + 16],
+      ].find(([x, y]) => fits(x, y, tw));
+      if (!spot) continue;
+      taken.push([spot[0], spot[1], tw]);
+      ctx.fillStyle = TEXT;
+      ctx.globalAlpha = top10 ? 1 : 0.75;
+      ctx.fillText(label, spot[0], spot[1] + 5);
+      ctx.globalAlpha = 1;
       shown++;
     }
 
     // my team, hover, selection
-    const mark = (i: number, color: string, label: string | null, dashed = false) => {
+    const mark = (
+      i: number,
+      color: string,
+      label: string | null,
+      dashed = false,
+    ) => {
       if (i < 0) return;
       const [X, Y] = toScreen(i);
       ctx.strokeStyle = color;
@@ -213,9 +260,18 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
         ctx.fillText(label, X + 14, Y - 8);
       }
     };
-    mark(mineIdx, '#eceef1', mineIdx >= 0 ? `${data.n[mineIdx]} (yours)` : null, true);
-    mark(hover.current, 'rgba(63,230,255,.6)', null);
-    mark(picked.current, '#3fe6ff', picked.current >= 0 ? String(data.n[picked.current]) : null);
+    mark(
+      mineIdx,
+      TEXT,
+      mineIdx >= 0 ? `${data.n[mineIdx]} (yours)` : null,
+      true,
+    );
+    mark(hover.current, TEXT, null);
+    mark(
+      picked.current,
+      ACCENT,
+      picked.current >= 0 ? String(data.n[picked.current]) : null,
+    );
   }, [N, data, order, rankOf, eMax, toScreen, worldToScreen, mineIdx]);
 
   const redraw = useCallback(() => {
@@ -229,10 +285,14 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
       const k = Math.min(K_MAX, Math.max(K_MIN, c.k * f));
       const wx = c.x + (sxp - ox) / (sx * c.k);
       const wy = c.y - (syp - oy) / (sy * c.k);
-      cam.current = { k, x: wx - (sxp - ox) / (sx * k), y: wy + (syp - oy) / (sy * k) };
+      cam.current = {
+        k,
+        x: wx - (sxp - ox) / (sx * k),
+        y: wy + (syp - oy) / (sy * k),
+      };
       redraw();
     },
-    [frame, redraw]
+    [frame, redraw],
   );
   const reset = () => {
     cancelAnimationFrame(flight.current);
@@ -252,7 +312,7 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
       const to = { x: px[i] + dx, y: py[i], k: k1 };
       picked.current = i;
       cancelAnimationFrame(flight.current);
-      const done = () => open && peek(`frc${data.n[i]}`, data.year);
+      const done = () => open && peek(`frc${data.n[i]}`, data.year, true);
       if (!motionOk() || !w) {
         cam.current = to;
         redraw();
@@ -263,14 +323,20 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
       const step = (t: number) => {
         const u = Math.min((t - t0) / 600, 1);
         const e = 1 - (1 - u) ** 3;
-        cam.current = { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e, k: Math.exp(Math.log(from.k) + (Math.log(to.k) - Math.log(from.k)) * e) };
+        cam.current = {
+          x: from.x + (to.x - from.x) * e,
+          y: from.y + (to.y - from.y) * e,
+          k: Math.exp(
+            Math.log(from.k) + (Math.log(to.k) - Math.log(from.k)) * e,
+          ),
+        };
         draw();
         if (u < 1) flight.current = requestAnimationFrame(step);
         else done();
       };
       flight.current = requestAnimationFrame(step);
     },
-    [data, draw, redraw, frame, px, py]
+    [data, draw, redraw, frame, px, py],
   );
 
   useEffect(() => {
@@ -288,10 +354,10 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
       const i = byNum.get(Number((e as CustomEvent).detail));
       if (i !== undefined) flyTo(i);
     };
-    window.addEventListener('ot:fly', onFly);
+    window.addEventListener("ot:fly", onFly);
     return () => {
       ro.disconnect();
-      window.removeEventListener('ot:fly', onFly);
+      window.removeEventListener("ot:fly", onFly);
       cancelAnimationFrame(raf.current);
       raf.current = 0;
       cancelAnimationFrame(flight.current);
@@ -300,9 +366,9 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
 
   useEffect(() => {
     if (!full) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setFull(false);
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFull(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [full]);
 
   // ---------------------------------------------------------------- pointer: pan, pinch, wheel, hover, tap
@@ -316,7 +382,7 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
     let best = -1;
     let bd = slop * slop;
     // zoomed out only the labelled top 10 are targets; zoomed in, any dot
-    const pool = cam.current.k < DETAIL[0] ? order.slice(0, 10) : order;
+    const pool = N >= 200 && cam.current.k < DETAIL[0] ? order.slice(0, 10) : order;
     for (const i of pool) {
       const [X, Y] = toScreen(i);
       const d = (X - x) ** 2 + (Y - y) ** 2;
@@ -333,10 +399,14 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
       e.preventDefault();
       cancelAnimationFrame(flight.current);
       const r = c.getBoundingClientRect();
-      zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0016)));
+      zoomAt(
+        e.clientX - r.left,
+        e.clientY - r.top,
+        Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0016)),
+      );
     };
-    c.addEventListener('wheel', onWheel, { passive: false });
-    return () => c.removeEventListener('wheel', onWheel);
+    c.addEventListener("wheel", onWheel, { passive: false });
+    return () => c.removeEventListener("wheel", onWheel);
   }, [zoomAt]);
 
   const onDown = (e: React.PointerEvent) => {
@@ -349,12 +419,12 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
     const p = ptrs.current;
     const prev = p.get(e.pointerId);
     if (!prev) {
-      if (e.pointerType !== 'mouse') return;
+      if (e.pointerType !== "mouse") return;
       const [x, y] = local(e);
       const i = hit(x, y, 14);
       if (i !== hover.current) {
         hover.current = i;
-        cvs.current!.style.cursor = i >= 0 ? 'pointer' : 'grab';
+        cvs.current!.style.cursor = i >= 0 ? "pointer" : "grab";
         redraw();
       }
       setTip(i >= 0 ? { i, x, y } : null);
@@ -375,7 +445,10 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
       p.set(e.pointerId, { x: e.clientX, y: e.clientY });
       const [a2, b2] = [...p.values()];
       moved.current += 10;
-      const [mx, my] = local({ clientX: (a2.x + b2.x) / 2, clientY: (a2.y + b2.y) / 2 });
+      const [mx, my] = local({
+        clientX: (a2.x + b2.x) / 2,
+        clientY: (a2.y + b2.y) / 2,
+      });
       if (d0 > 0) zoomAt(mx, my, Math.hypot(a2.x - b2.x, a2.y - b2.y) / d0);
       return;
     }
@@ -386,12 +459,12 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
     ptrs.current.delete(e.pointerId);
     if (was !== 1 || moved.current >= 6) return;
     const [x, y] = local(e);
-    const i = hit(x, y, e.pointerType === 'mouse' ? 14 : 24);
+    const i = hit(x, y, e.pointerType === "mouse" ? 14 : 24);
     if (i >= 0) {
       picked.current = i;
       setTip(null);
       redraw();
-      peek(`frc${data.n[i]}`, data.year);
+      peek(`frc${data.n[i]}`, data.year, true);
     }
   };
 
@@ -405,21 +478,28 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
     if (exact !== undefined) out.push(exact);
     for (const i of order) {
       if (out.length >= 6) break;
-      if (i !== exact && (num ? String(data.n[i]).startsWith(t) : data.name[i].toLowerCase().includes(t))) out.push(i);
+      if (
+        i !== exact &&
+        (num
+          ? String(data.n[i]).startsWith(t)
+          : data.name[i].toLowerCase().includes(t))
+      )
+        out.push(i);
     }
     return out;
   }, [q, byNum, order, data]);
   // An exact team number flies there as you type.
   useEffect(() => {
     const t = q.trim();
-    if (/^\d{1,5}$/.test(t) && byNum.has(Number(t))) flyTo(byNum.get(Number(t))!, false);
+    if (/^\d{1,5}$/.test(t) && byNum.has(Number(t)))
+      flyTo(byNum.get(Number(t))!, false);
   }, [q, byNum, flyTo]);
 
   const row = (i: number, k: number, listbox: boolean) => {
     const rank = rankOf.get(i);
     const body = (
       <>
-        <span className="rk">{rank ?? '—'}</span>
+        <span className="rk">{rank ?? "—"}</span>
         <Avatar team={data.n[i]} year={data.year} />
         <span className={`team-num${hot(rank)}`}>{data.n[i]}</span>
         <span className="nm">{data.name[i]}</span>
@@ -427,7 +507,14 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
       </>
     );
     return listbox ? (
-      <li key={i} id={`gr-${k}`} role="option" aria-selected={k === active} onMouseMove={() => setActive(k)} onClick={() => flyTo(i)}>
+      <li
+        key={i}
+        id={`gr-${k}`}
+        role="option"
+        aria-selected={k === active}
+        onMouseMove={() => setActive(k)}
+        onClick={() => flyTo(i)}
+      >
         {body}
       </li>
     ) : (
@@ -440,67 +527,98 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
   };
 
   return (
-    <section className={`home${full ? ' full' : ''}`} aria-label="Find a team">
-      <div className="home-side">
-        <h1>Find a team.</h1>
-        <p className="home-sub">
-          {title} · {N.toLocaleString()} teams
-        </p>
-        <div className="find">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden>
-            <circle cx="10.5" cy="10.5" r="6" />
-            <path d="m15 15 5 5" />
-          </svg>
-          <input
-            type="search"
-            role="combobox"
-            aria-label="Team number or name"
-            aria-expanded={results.length > 0}
-            aria-controls="home-results"
-            aria-activedescendant={results[active] !== undefined ? `gr-${active}` : undefined}
-            placeholder="Team number or name"
-            value={q}
-            autoComplete="off"
-            spellCheck={false}
-            enterKeyHint="go"
-            onChange={(e) => {
-              setQ(e.target.value);
-              setActive(0);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowDown') (e.preventDefault(), setActive((a) => Math.min(a + 1, results.length - 1)));
-              else if (e.key === 'ArrowUp') (e.preventDefault(), setActive((a) => Math.max(a - 1, 0)));
-              else if (e.key === 'Enter' && results[active] !== undefined) (e.preventDefault(), flyTo(results[active]));
-              else if (e.key === 'Escape') setQ('');
-            }}
-          />
-          <kbd aria-hidden>/</kbd>
-        </div>
+    <section
+      className={`home${full ? " full" : ""}${bare ? " bare" : ""}`}
+      aria-label={bare ? "Map of the field" : "Find a team"}
+    >
+      {bare ? null : (
+        <div className="home-side">
+          <h1>Find a team.</h1>
+          <p className="home-sub">
+            {title} · {N.toLocaleString()} teams
+          </p>
+          <div className="find">
+            <svg
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              aria-hidden
+            >
+              <circle cx="10.5" cy="10.5" r="6" />
+              <path d="m15 15 5 5" />
+            </svg>
+            <input
+              type="search"
+              role="combobox"
+              aria-label="Team number or name"
+              aria-expanded={results.length > 0}
+              aria-controls="home-results"
+              aria-activedescendant={
+                results[active] !== undefined ? `gr-${active}` : undefined
+              }
+              placeholder="Team number or name"
+              value={q}
+              autoComplete="off"
+              spellCheck={false}
+              enterKeyHint="go"
+              onChange={(e) => {
+                setQ(e.target.value);
+                setActive(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown")
+                  (e.preventDefault(),
+                    setActive((a) => Math.min(a + 1, results.length - 1)));
+                else if (e.key === "ArrowUp")
+                  (e.preventDefault(), setActive((a) => Math.max(a - 1, 0)));
+                else if (e.key === "Enter" && results[active] !== undefined)
+                  (e.preventDefault(), flyTo(results[active]));
+                else if (e.key === "Escape") setQ("");
+              }}
+            />
+            <kbd aria-hidden>/</kbd>
+          </div>
 
-        {q.trim() ? (
-          <ul className="rows" id="home-results" role="listbox" aria-label="Matching teams">
-            {results.length ? results.map((i, k) => row(i, k, true)) : <li className="status-line">Sudden death: no match.</li>}
-          </ul>
-        ) : (
-          <>
-            {mineIdx >= 0 ? (
-              <div className="home-block">
-                <h2>Your team</h2>
-                <ul className="rows">{row(mineIdx, 0, false)}</ul>
-              </div>
-            ) : null}
-            <details className="home-block" open>
-              <summary>
-                <h2>Top 10 by EDGE</h2>
-              </summary>
-              <ol className="rows">{order.slice(0, 10).map((i, k) => row(i, k, false))}</ol>
-              <Link className="more-link" href={`/teams?year=${data.year}`}>
-                All {N.toLocaleString()} teams →
-              </Link>
-            </details>
-          </>
-        )}
-      </div>
+          {q.trim() ? (
+            <ul
+              className="rows"
+              id="home-results"
+              role="listbox"
+              aria-label="Matching teams"
+            >
+              {results.length ? (
+                results.map((i, k) => row(i, k, true))
+              ) : (
+                <li className="status-line">Nobody matches that.</li>
+              )}
+            </ul>
+          ) : (
+            <>
+              {mineIdx >= 0 ? (
+                <div className="home-block">
+                  <h2>Your team</h2>
+                  <ul className="rows">{row(mineIdx, 0, false)}</ul>
+                </div>
+              ) : null}
+              <details className="home-block" open>
+                <summary>
+                  <h2>Top 10 by EDGE</h2>
+                </summary>
+                <ol className="rows">
+                  {order.slice(0, 10).map((i, k) => row(i, k, false))}
+                </ol>
+                <Link className="more-link" href={`/teams?year=${data.year}&view=list`}>
+                  All {N.toLocaleString()} teams →
+                </Link>
+              </details>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="home-map">
         <canvas
@@ -530,22 +648,49 @@ export function Galaxy({ data, mine, title }: { data: GalaxyData; mine: number |
           Defense →
         </span>
         {tip ? (
-          <div className="map-tip" style={{ left: tip.x, top: tip.y }} aria-hidden>
+          <div
+            className="map-tip"
+            style={{ left: tip.x, top: tip.y }}
+            aria-hidden
+          >
             <b>{data.n[tip.i]}</b>
             <span>{data.name[tip.i]}</span>
             <EdgeGauge edge={data.e[tip.i]} size="xs" />
           </div>
         ) : null}
-        <p className="map-key">Each dot is a team. Brighter means more EDGE.</p>
+        <p className="map-key">
+          {zoomed
+            ? "Each dot is a team. Brighter: more EDGE."
+            : "Shade: how many teams. Labelled: the top 10 by EDGE. Zoom in for every team."}
+        </p>
         <div className="map-ctl">
-          <button type="button" className="ghost expand" aria-pressed={full} onClick={() => setFull((f) => !f)}>
-            {full ? 'Close map' : 'Expand map'}
+          <button
+            type="button"
+            className="ghost expand"
+            aria-pressed={full}
+            onClick={() => setFull((f) => !f)}
+          >
+            {full ? "Close map" : "Expand map"}
           </button>
           <div className="zoom">
-            <button type="button" className="ghost" aria-label="Zoom in" onClick={() => zoomAt(size.current.w / 2, size.current.h / 2, 1.8)}>
+            <button
+              type="button"
+              className="ghost"
+              aria-label="Zoom in"
+              onClick={() =>
+                zoomAt(size.current.w / 2, size.current.h / 2, 1.8)
+              }
+            >
               +
             </button>
-            <button type="button" className="ghost" aria-label="Zoom out" onClick={() => zoomAt(size.current.w / 2, size.current.h / 2, 1 / 1.8)}>
+            <button
+              type="button"
+              className="ghost"
+              aria-label="Zoom out"
+              onClick={() =>
+                zoomAt(size.current.w / 2, size.current.h / 2, 1 / 1.8)
+              }
+            >
               −
             </button>
             <button type="button" className="ghost" onClick={reset}>

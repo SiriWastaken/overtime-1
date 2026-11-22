@@ -314,6 +314,7 @@ export class XptsModel implements Predictor<XptsForecast> {
   private readonly carry = new Map<string, Map<string, Carry>>(); // team → "comp|param" → carry
   private readonly books = new Map<string, TeamBook>();
   private readonly logits = new Map<string, OnlineLogit>();
+  private readonly priors?: Map<string, { priorNet?: number; isRookie?: boolean }>;
   private readonly eventTeams: Map<string, string[]>;
   private readonly last = new Map<string, XptsForecast>();
   readonly history: HistoryPoint[] = [];
@@ -332,6 +333,7 @@ export class XptsModel implements Predictor<XptsForecast> {
     this.tot = new ScaledResidual(this.opts.halfLife);
     this.marg = new ScaledResidual(this.opts.halfLife);
     for (const b of this.spec.bonuses) this.logits.set(b.key, new OnlineLogit());
+    this.priors = data.priors;
     // Teams per event: registrations plus anyone who appears in a match (schedules are public before play).
     this.eventTeams = new Map();
     for (const [k, v] of data.eventTeams) this.eventTeams.set(k, [...v]);
@@ -349,13 +351,29 @@ export class XptsModel implements Predictor<XptsForecast> {
     const informed = h.n >= this.opts.minObs / 4;
     const tau2 = informed ? h.tau2 : 1e4;
     const frac = param === 'def' ? this.opts.defenseFrac : 1;
-    const base = param === 'def' ? 0 : h.mu;
     const cr = this.opts.carry ? this.carry.get(team)?.get(`${c.id}|${param}`) : undefined;
     if (cr) {
       const shift = param === 'off' && this.opts.drift ? h.mu - cr.mu : 0;
       return { mean: cr.mean + shift, var: cr.var + this.opts.eta * frac * tau2, carried: true };
     }
-    return { mean: base, var: frac * tau2, carried: false };
+    // Pre-season / rookie priors shrinking toward season mean
+    let base = param === 'def' ? 0 : h.mu;
+    let varMult = 1.0;
+    const tp = this.priors?.get(team);
+    if (tp && informed && param === 'off') {
+      if (tp.isRookie) {
+        base = Math.max(0, h.mu * 0.85); // rookies shrink ~15% below veteran average
+        varMult = 1.25;
+      } else if (tp.priorNet !== undefined) {
+        // Regress prior season relative standing toward the mean with shrinkage rho ~ 0.65
+        const shrink = 0.65;
+        const z = Math.max(-2.5, Math.min(2.5, tp.priorNet));
+        const shift = (z * Math.sqrt(tau2) * shrink) / (c.attribution === 'robot' ? 1 : 3);
+        base = Math.max(0, h.mu + shift);
+        varMult = Math.max(0.6, 1 - shrink * shrink * 0.6);
+      }
+    }
+    return { mean: base, var: frac * tau2 * varMult, carried: false };
   }
 
   private paramsFor(c: ComponentSpec): ('off' | 'def')[] {

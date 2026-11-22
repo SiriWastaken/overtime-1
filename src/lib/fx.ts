@@ -15,10 +15,11 @@ export function setCalm(on: boolean) {
 }
 
 /** Open the command palette (optionally straight to the season list). */
-export const openPalette = (mode?: 'season') => window.dispatchEvent(new CustomEvent('ot:palette', { detail: mode }));
+export const openPalette = (mode?: 'settings') => window.dispatchEvent(new CustomEvent('ot:palette', { detail: mode }));
 
 /** Open the team slide-over. */
-export const peek = (team: string, year: number) => window.dispatchEvent(new CustomEvent('ot:peek', { detail: { team, year } }));
+/** `see` = see-through card that leaves the page behind it usable (used on the team map). */
+export const peek = (team: string, year: number, see = false) => window.dispatchEvent(new CustomEvent('ot:peek', { detail: { team, year, see } }));
 
 // "My team" is a cookie so server-rendered tables can pin its row.
 export function getMyTeam(): string | null {

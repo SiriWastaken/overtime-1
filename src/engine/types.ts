@@ -43,6 +43,8 @@ export interface SeasonData {
   matches: MatchRow[];
   /** Registered teams per event (from TBA /event/{key}/teams). */
   eventTeams: Map<string, string[]>;
+  /** Prior season ratings and rookie indicators for Bayesian priors */
+  priors?: Map<string, { priorNet?: number; isRookie?: boolean }>;
 }
 
 export const played = (m: MatchRow) => m.redScore !== null && m.blueScore !== null;

@@ -4,11 +4,17 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { openPalette } from '@/lib/fx';
 import { SEASONAL } from './Palette';
-import { CalmToggle, Logo } from './ui';
+import { Logo } from './ui';
 
 const I = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.75, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const;
 
 const ICONS = {
+  home: (
+    <svg {...I}>
+      <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
+  ),
   teams: (
     <svg {...I}>
       <circle cx="9" cy="8" r="3.5" />
@@ -17,76 +23,103 @@ const ICONS = {
       <path d="M16 14.2a5 5 0 0 1 5.5 5" />
     </svg>
   ),
-  pick: (
+  events: (
     <svg {...I}>
-      <path d="M12 4.5 5 18h14z" strokeDasharray="2.2 2.4" />
-      <circle cx="12" cy="4.5" r="2.2" fill="currentColor" />
-      <circle cx="5" cy="18" r="2.2" fill="currentColor" />
-      <circle cx="19" cy="18" r="2.2" fill="currentColor" />
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
     </svg>
   ),
-  predict: (
+  compare: (
     <svg {...I}>
-      <circle cx="12" cy="13.5" r="7.5" />
-      <path d="M12 13.5V9.5M10 2.5h4M12 2.5V6M18.5 6.5l1.5-1.5" />
+      <path d="M16 3h5v5" />
+      <path d="M8 21H3v-5" />
+      <path d="M21 3l-7 7" />
+      <path d="M3 21l7-7" />
     </svg>
   ),
-  directory: (
+  lab: (
     <svg {...I}>
-      <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
+      <path d="M10 2v7.5L5.2 19.1A2 2 0 0 0 7 22h10a2 2 0 0 0 1.8-2.9L14 9.5V2" />
+      <path d="M8.5 2h7" />
+      <path d="M7 16h10" />
+    </svg>
+  ),
+  accuracy: (
+    <svg {...I}>
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
+  ),
+  data: (
+    <svg {...I}>
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
     </svg>
   ),
   search: (
     <svg {...I}>
-      <circle cx="10.5" cy="10.5" r="6" />
-      <path d="m15 15 5 5" />
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
   ),
-  calm: (
+  settings: (
     <svg {...I}>
-      <path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z" />
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="10" cy="17" r="2" />
     </svg>
   ),
 };
 
-const DIRECTORY = ['/directory', '/events', '/matches', '/analytics', '/methodology', '/developers', '/styleguide'];
-
-/** Left icon rail on desktop; the same links become a bottom dock on phones. The palette (⌘K) is the fast path. */
+/** Primary navigation: Teams, Events, Compare, Lab, Accuracy, Data, Search. */
 export function Rail({ fallback }: { fallback: number | null }) {
   const path = usePathname();
   const yp = useSearchParams().get('year');
   const year = Number(yp) || fallback;
   const href = (h: string) => (yp && SEASONAL.includes(h) ? `${h}?year=${yp}` : h);
-  const on = (h: string) =>
-    h === '/' ? path === '/' : h === '/teams' ? path.startsWith('/teams') : h === '/directory' ? DIRECTORY.some((d) => path.startsWith(d)) : path.startsWith(h);
-  const item = (h: string, label: string, icon: React.ReactNode, cls = '') => (
-    <Link href={href(h)} className={`rail-item ${cls}`} aria-current={on(h) ? 'page' : undefined}>
+  const on = (h: string) => (h === '/' ? path === '/' : path.startsWith(h));
+
+  const item = (h: string, label: string, icon: React.ReactNode) => (
+    <Link href={href(h)} className="rail-item" aria-current={on(h) ? 'page' : undefined}>
       {icon}
       <span>{label}</span>
     </Link>
   );
+
   return (
-    <nav className="rail" aria-label="Primary">
-      {item('/', 'Explore', <Logo />, 'explore')}
+    <nav className="rail" aria-label="Primary navigation">
+      <Link href={href('/')} className="rail-logo" aria-label="Overtime 1 Home">
+        <Logo />
+      </Link>
+      {item('/', 'Home', ICONS.home)}
       {item('/teams', 'Teams', ICONS.teams)}
-      <button type="button" className="rail-item rail-find" onClick={() => openPalette()} aria-keyshortcuts="Control+K Meta+K /">
-        {ICONS.search}
-        <span>Find</span>
-      </button>
-      {item('/pick', 'Pick', ICONS.pick)}
-      {item('/predict', 'Predict', ICONS.predict)}
+      {item('/events', 'Events', ICONS.events)}
+      {item('/compare', 'Compare', ICONS.compare)}
+      {item('/lab', 'Lab', ICONS.lab)}
+      {item('/accuracy', 'Accuracy', ICONS.accuracy)}
+      {item('/data', 'Data', ICONS.data)}
       <span className="rail-gap" aria-hidden />
-      <div className="rail-foot">
-        {item('/directory', 'Directory', ICONS.directory)}
-        <button type="button" className="rail-item season" onClick={() => openPalette('season')} aria-label={`Season ${year ?? ''}. Change season`}>
-          <b>{year ? `’${String(year).slice(2)}` : '—'}</b>
-          <span>Season</span>
-        </button>
-        <CalmToggle className="rail-item calm">
-          {ICONS.calm}
-          <span>Calm</span>
-        </CalmToggle>
-      </div>
+      <button
+        type="button"
+        className="rail-item search-btn"
+        onClick={() => openPalette()}
+        aria-label="Search teams and events (⌘K)"
+      >
+        {ICONS.search}
+        <span>Search</span>
+      </button>
+      <button
+        type="button"
+        className="rail-item"
+        onClick={() => openPalette('settings')}
+        aria-label={`Settings. Season ${year ?? 'none'}`}
+      >
+        {ICONS.settings}
+        <span>Settings</span>
+      </button>
     </nav>
   );
 }

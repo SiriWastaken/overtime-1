@@ -95,5 +95,22 @@ export function loadSeason(year: number): SeasonData {
     list.push(r.team_key);
     eventTeams.set(r.event_key, list);
   }
-  return { year, events, matches, eventTeams };
+  const priors = new Map<string, { priorNet?: number; isRookie?: boolean }>();
+  try {
+    const rookies = db.prepare('SELECT key, rookie_year FROM teams WHERE rookie_year = ?').all(year) as { key: string; rookie_year: number }[];
+    for (const r of rookies) priors.set(r.key, { isRookie: true });
+    const priorRatings = db.prepare('SELECT team_key, net FROM ratings WHERE year = ?').all(year - 1) as { team_key: string; net: number }[];
+    if (priorRatings.length > 0) {
+      const vals = priorRatings.map((x) => x.net);
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length) || 1;
+      for (const pr of priorRatings) {
+        const cur = priors.get(pr.team_key) ?? {};
+        priors.set(pr.team_key, { ...cur, priorNet: (pr.net - mean) / sd });
+      }
+    }
+  } catch {
+    // If tables don't exist yet or columns absent, priors stay empty
+  }
+  return { year, events, matches, eventTeams, priors };
 }

@@ -4,12 +4,12 @@ import { Avatar, Empty, RangeBar, TeamLink, WinBar } from '@/components/bits';
 import { Histogram, RatingChart } from '@/components/charts';
 import { phaseRating, PHASE_COLS } from '@/components/RatingsTable';
 import { EdgeGauge, edgePts, hot } from '@/components/edge';
-import { MyTeamButton, PicklistButton, Tip } from '@/components/ui';
+import { MyTeamButton, PicklistButton, Tip, Why, UncertaintyFuzzBar } from '@/components/ui';
 import { seasonSpec } from '@/engine/seasons';
 import { seasonEdges } from '@/lib/edge';
 import { wilson } from '@/engine/stats';
 import { dateRange, location, matchLabel, pct, pts } from '@/lib/format';
-import { modelRun, resolveYear, teamEvents, teamHistory, teamMatches, teamMeta, teamRating, teamRatings, teamYears } from '@/lib/queries';
+import { modelRun, resolveYear, similarTeams, teamEvents, teamHistory, teamMatches, teamMeta, teamRating, teamRatings, teamYears } from '@/lib/queries';
 
 export async function generateMetadata({ params }: { params: Promise<{ number: string }> }) {
   return { title: `Team ${(await params).number}` };
@@ -33,6 +33,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
   const r = rated?.rating;
   const se = r ? seasonEdges(year) : null;
   const edge = se?.byTeam.get(key) ?? null;
+  const similar = r ? similarTeams(year, key, 5) : [];
 
   return (
     <>
@@ -46,25 +47,12 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
           <div className="sub">
             {meta ? location(meta) : 'Unknown origin'}
             {meta?.rookie_year ? ` · since ${meta.rookie_year}` : ''}
-            {years.length > 1 ? (
-              <>
-                {' · '}
-                {years.map((y, i) => (
-                  <span key={y}>
-                    {i ? ' ' : ''}
-                    {y === year ? <strong>{y}</strong> : <Link href={`/teams/${number}?year=${y}`}>{y}</Link>}
-                  </span>
-                ))}
-              </>
-            ) : null}
+            {` · ${year} season`}
           </div>
         </div>
         {r ? (
           <div className="actions">
             <PicklistButton team={key} year={year} />
-            <Link className="button ghost" href={`/pick?year=${year}&red=${number}`}>
-              Try on launch pad
-            </Link>
             <MyTeamButton team={key} />
           </div>
         ) : null}
@@ -81,8 +69,8 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
             {edge ? (
               <div className="tile hero-tile">
                 <small>
-                  EDGE · extra wins per 100 matches
-                  <Tip label="What is EDGE?">Compared with a median robot in the same alliance.</Tip>
+                  EDGE · win-chance points vs a median robot
+                  <Tip label="What is EDGE?">How much this team raises an alliance’s win chance, compared with a median robot in the same seat.</Tip>
                 </small>
                 <EdgeGauge edge={edge.edge} lo={edge.lo80} hi={edge.hi80} matches={edge.matches} size="lg" />
                 <span className="range-line">
@@ -97,13 +85,29 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
               <small>Rank of {rated!.total.toLocaleString()}</small>
             </div>
             <div className="tile">
-              <b>
-                {r.net.toFixed(1)}
-              </b>
+              <b>+{r.net.toFixed(1)}</b>
               <small>
-                Points added / match
-                <Tip label="What is this?">Points this robot adds to its alliance’s margin each match (xPts).</Tip>
+                xPts Net Added / Match
+                <Why
+                  title={`Team ${number} xPts Rating`}
+                  value={`+${r.net.toFixed(1)} (±${r.total.sd.toFixed(1)} SD)`}
+                  inputs={[
+                    `Matches played: ${r.matches}`,
+                    `Events attended: ${r.events.length}`,
+                    `Auto contribution: +${(r.components.auto?.mean ?? 0).toFixed(1)} pts`,
+                    `Teleop contribution: +${(r.components.teleop?.mean ?? 0).toFixed(1)} pts`,
+                    `Endgame contribution: +${(r.components.endgame?.mean ?? 0).toFixed(1)} pts`,
+                    `Defense suppression: +${(r.defense?.mean ?? 0).toFixed(1)} pts`,
+                    `Fouls conceded: -${(r.fouls?.mean ?? 0).toFixed(1)} pts`,
+                  ]}
+                  method="Bayesian Gaussian state estimation (exact partner covariance within events, drift-adjusted carry between events). Shrunk toward season component averages."
+                  uncertainty={`Posterior SD: ±${r.total.sd.toFixed(1)} pts · 80% credible interval: [${(r.net - 1.28 * r.total.sd).toFixed(1)}, ${(r.net + 1.28 * r.total.sd).toFixed(1)}]`}
+                  sampleSize={r.matches}
+                />
               </small>
+              <div style={{ marginTop: 6 }}>
+                <UncertaintyFuzzBar value={r.net} sd={r.total.sd} min={0} max={60} label={`Team ${number} xPts`} />
+              </div>
             </div>
             <div className="tile">
               <b>
@@ -258,6 +262,27 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
           </div>
         </>
       )}
+
+      {similar.length ? (
+        <section className="section" aria-labelledby="similar-head">
+          <div className="section-head">
+            <h2 id="similar-head">Similar Teams ({year})</h2>
+            <Tip label="How similar teams are found">Closest statistical profiles based on normalized auto, teleop, endgame, and defense contributions.</Tip>
+          </div>
+          <div className="similar-teams-grid">
+            {similar.map((st) => (
+              <Link key={st.key} href={`/teams/${st.number}?year=${year}`} className="similar-team-card">
+                <Avatar team={st.number} year={year} size={28} />
+                <div className="st-info">
+                  <span className="st-num">#{st.number}</span>
+                  <span className="st-name muted">{st.nickname ?? ''}</span>
+                </div>
+                <span className="st-xpts">+{st.rating.net.toFixed(1)}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="section">
         <div className="section-head">

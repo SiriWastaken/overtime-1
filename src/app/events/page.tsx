@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { Empty } from '@/components/bits';
-import { Tip } from '@/components/ui';
+import { Tip, Why } from '@/components/ui';
 import { dateRange, location } from '@/lib/format';
-import { events, resolveYear } from '@/lib/queries';
+import { eventTeamKeys, events, resolveYear, teamRatings } from '@/lib/queries';
 
 export const metadata = { title: 'Events' };
 
@@ -14,6 +14,9 @@ export default async function Events({ searchParams }: { searchParams: Promise<R
   const year = resolveYear(sp.year);
   const q = (sp.q ?? '').toLowerCase().slice(0, 60);
   const all = year ? events(year) : [];
+  const { rows: tRows } = year ? teamRatings(year) : { rows: [] };
+  const ratingMap = new Map(tRows.map((r) => [r.key, r.rating.net]));
+
   const list = all.filter((e) => !q || `${e.name} ${e.city} ${e.state_prov} ${e.country} ${e.key}`.toLowerCase().includes(q));
   const groups = new Map<string, typeof list>();
   for (const e of list) groups.set(groupOf(e), [...(groups.get(groupOf(e)) ?? []), e]);
@@ -35,7 +38,7 @@ export default async function Events({ searchParams }: { searchParams: Promise<R
       </form>
       {list.length === 0 ? (
         <Empty>
-          <strong>Sudden death: no match.</strong>
+          <strong>Nobody matches that.</strong>
           {all.length ? 'Nothing matches. Try a city.' : 'No events synced yet.'}
         </Empty>
       ) : (
@@ -48,29 +51,36 @@ export default async function Events({ searchParams }: { searchParams: Promise<R
                 <th>Dates</th>
                 <th>Status</th>
                 <th className="n">Teams</th>
+                <th className="n">Field Strength</th>
                 <th className="n">Played</th>
               </tr>
             </thead>
             <tbody>
               {[...groups].map(([g, evs]) => [
                 <tr className="group" key={g}>
-                  <td colSpan={6}>{g}</td>
+                  <td colSpan={7}>{g}</td>
                 </tr>,
-                ...evs.map((e) => (
-                  <tr key={e.key}>
-                    <td className="wrap">
-                      <Link href={`/events/${e.key}`}>{e.name}</Link>
-                      {e.district_name ? <span className="muted"> · {e.district_name}</span> : null}
-                    </td>
-                    <td className="hide-m muted">{location(e)}</td>
-                    <td className="muted">{dateRange(e.start_date, e.end_date)}</td>
-                    <td>
-                      <span className={`status ${e.status}`}>{e.status}</span>
-                    </td>
-                    <td className="n">{e.teams || '—'}</td>
-                    <td className="n">{e.scheduled ? `${e.played}/${e.scheduled}` : '—'}</td>
-                  </tr>
-                )),
+                ...evs.map((e) => {
+                  const keys = eventTeamKeys(e.key);
+                  const nets = keys.map((k) => ratingMap.get(k) ?? 0);
+                  const strength = nets.length ? nets.reduce((a, b) => a + b, 0) / nets.length : null;
+                  return (
+                    <tr key={e.key}>
+                      <td className="wrap">
+                        <Link href={`/events/${e.key}`}>{e.name}</Link>
+                        {e.district_name ? <span className="muted"> · {e.district_name}</span> : null}
+                      </td>
+                      <td className="hide-m muted">{location(e)}</td>
+                      <td className="muted">{dateRange(e.start_date, e.end_date)}</td>
+                      <td>
+                        <span className={`status ${e.status}`}>{e.status}</span>
+                      </td>
+                      <td className="n">{e.teams || '—'}</td>
+                      <td className="n strong">{strength !== null && strength > 0 ? `+${strength.toFixed(1)}` : '—'}</td>
+                      <td className="n">{e.scheduled ? `${e.played}/${e.scheduled}` : '—'}</td>
+                    </tr>
+                  );
+                }),
               ])}
             </tbody>
           </table>

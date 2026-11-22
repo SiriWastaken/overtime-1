@@ -86,3 +86,74 @@ export class TeamAverage implements Predictor {
     this.s += m.redScore! + m.blueScore!;
   }
 }
+
+/**
+ * Elo / EPA baseline (exponentially updated per-team rating on point scale).
+ * Predicts alliance score as sum of 3 teams' EPAs; updates each team by (actual - expected) * K / 3.
+ * Win probability is derived from predicted margin and historical margin RMSE.
+ */
+export class EloEpa implements Predictor {
+  readonly id = 'elo_epa';
+  readonly label = 'Elo / EPA rating';
+  private epa = new Map<string, number>();
+  private matchCount = new Map<string, number>();
+  private n = 0;
+  private s = 0;
+  private marginErr = new ErrorScale();
+  private last = new Map<string, number>();
+  private readonly defaultK: number;
+
+  constructor(k = 0.12) {
+    this.defaultK = k;
+  }
+
+  private teamEpa(team: string, mu: number): number {
+    const e = this.epa.get(team);
+    return e !== undefined ? e : mu / 3;
+  }
+
+  predict(m: MatchRow): Forecast | null {
+    if (this.n === 0) return null;
+    const mu = this.s / this.n;
+    let r = 0;
+    for (const t of m.red) r += this.teamEpa(t, mu);
+    let b = 0;
+    for (const t of m.blue) b += this.teamEpa(t, mu);
+    this.last.set(m.key, r - b);
+    const sd = this.marginErr.rms(mu * 0.5 + 1);
+    return { redMean: r, blueMean: b, redWinProb: normalCdf((r - b) / sd) };
+  }
+
+  observe(m: MatchRow) {
+    const pm = this.last.get(m.key);
+    if (pm !== undefined) {
+      this.marginErr.add(m.redScore! - m.blueScore! - pm);
+      this.last.delete(m.key);
+    }
+    const mu = this.s / Math.max(this.n, 1);
+    // Update red teams
+    let rPred = 0;
+    for (const t of m.red) rPred += this.teamEpa(t, mu);
+    const rErr = m.redScore! - rPred;
+    for (const t of m.red) {
+      const c = this.matchCount.get(t) ?? 0;
+      const k = this.defaultK * Math.max(0.5, 1.5 / (1 + 0.1 * c));
+      const cur = this.teamEpa(t, mu);
+      this.epa.set(t, cur + (k / Math.max(m.red.length, 1)) * rErr);
+      this.matchCount.set(t, c + 1);
+    }
+    // Update blue teams
+    let bPred = 0;
+    for (const t of m.blue) bPred += this.teamEpa(t, mu);
+    const bErr = m.blueScore! - bPred;
+    for (const t of m.blue) {
+      const c = this.matchCount.get(t) ?? 0;
+      const k = this.defaultK * Math.max(0.5, 1.5 / (1 + 0.1 * c));
+      const cur = this.teamEpa(t, mu);
+      this.epa.set(t, cur + (k / Math.max(m.blue.length, 1)) * bErr);
+      this.matchCount.set(t, c + 1);
+    }
+    this.n += 2;
+    this.s += m.redScore! + m.blueScore!;
+  }
+}

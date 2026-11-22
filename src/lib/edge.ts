@@ -1,6 +1,6 @@
 // EDGE for a season, computed from the stored ratings and model run (no extra storage). Cached per model run.
 
-import { checkEdgeScale, computeEdges, edgeContext, netOf, type Edge, type EdgeCheckItem, type EdgeContext } from '../engine/edge.ts';
+import { checkEdgeScale, computeEdges, edgeContext, netOf, winProbWith, type Edge, type EdgeCheckItem, type EdgeContext, type NetEstimate } from '../engine/edge.ts';
 import type { TeamRating, XptsForecast } from '../engine/model.ts';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -13,6 +13,8 @@ export interface SeasonEdges {
   byTeam: Map<string, Edge & { rank: number }>;
   /** Teams with an EDGE, best first. */
   ranked: (Edge & { rank: number })[];
+  pool: Map<string, NetEstimate>;
+  noise: Parameters<typeof edgeContext>[1];
 }
 
 const cache = new Map<number, SeasonEdges | null>();
@@ -30,11 +32,53 @@ export function seasonEdges(year: number): SeasonEdges | null {
     const ranked = computeEdges(pool, ctx)
       .sort((a, b) => b.edge - a.edge)
       .map((e, i) => ({ ...e, rank: i + 1 }));
-    out = { runId: run.id, ctx, byTeam: new Map(ranked.map((e) => [e.team, e])), ranked };
+    out = { runId: run.id, ctx, byTeam: new Map(ranked.map((e) => [e.team, e])), ranked, pool: new Map(pool.map((p) => [p.team, p])), noise };
   }
   cache.clear(); // keep only the latest run per process
   cache.set(run.id, out);
   return out;
+}
+
+export interface Fit {
+  team: string;
+  /** Win-chance change from putting this robot in your alliance's next open seat instead of a median robot. */
+  /** null = no rating this season yet */
+  fit: number | null;
+  edge: number | null;
+  matches: number;
+}
+
+/**
+ * Fit: EDGE re-evaluated with your alliance's filled seats pinned as partners, for the next open seat.
+ * `mine` = filled seats in order (captain first). Candidates: the event roster if given, else the season's top 200
+ * by EDGE (Fit order tracks EDGE closely; the cap keeps the call fast). `winChance` = your alliance today with
+ * median robots in the open seats, against random alliances from the season's pool.
+ */
+export function allianceFit(year: number, mine: string[], opts: { roster?: string[]; exclude?: Set<string> } = {}) {
+  const se = seasonEdges(year);
+  if (!se) return null;
+  const pinned = mine.map((t) => se.pool.get(t)).filter((p): p is NetEstimate => !!p);
+  const unrated = mine.filter((t) => !se.pool.has(t));
+  const pool = [...se.pool.values()];
+  const median = { net: se.ctx.replacement, gross: se.ctx.replacementGross };
+  // seats beyond two partners: the third robot is evaluated directly
+  const ctx = pinned.length ? edgeContext(pool, se.noise, 2048, 1, pinned.slice(0, 2)) : se.ctx;
+  if (!ctx) return null;
+  const third = pinned[2];
+  const winChance = third ? winProbWith(ctx, third.net, third.gross) : winProbWith(ctx, median.net, median.gross);
+  if (pinned.length >= 3) return { winChance, fits: [] as Fit[], unrated };
+  // with fewer than two pinned partners, the open seat's random partner is drawn by the context itself
+  const base = winProbWith(ctx, median.net, median.gross);
+  const skip = new Set([...mine, ...(opts.exclude ?? [])]);
+  const keys = opts.roster ?? se.ranked.slice(0, 200).map((e) => e.team);
+  const fits: Fit[] = keys
+    .filter((k) => !skip.has(k))
+    .map((k) => {
+      const p = se.pool.get(k);
+      return { team: k, fit: p ? winProbWith(ctx, p.net, p.gross) - base : null, edge: se.byTeam.get(k)?.edge ?? null, matches: p?.matches ?? 0 };
+    })
+    .sort((a, b) => (b.fit ?? -9) - (a.fit ?? -9) || Number(a.team.slice(3)) - Number(b.team.slice(3)));
+  return { winChance, fits, unrated };
 }
 
 /** Walk-forward check of EDGE's scale on a season's stored pre-match forecasts (eligible ones only). */

@@ -18,7 +18,7 @@ Two audiences with equal weight (confirmed):
 
 ## Product Purpose
 
-Overtime 1 measures what FRC robots can do *this season*, forecasts matches, rankings and playoffs with honest uncertainty, and shows its evidence. Success: forecasts that are calibrated and beat transparent baselines on a fair, reproducible walk-forward test, explained well enough that a student can see why a robot is rated as it is.
+Overtime 1 is an alliance-selection copilot: it answers "Who should we pick next, and why?" for a scouting lead with two or three minutes at an event, on a phone or tablet. Fit (EDGE given your alliance so far) is the engine. Underneath, it measures what FRC robots can do *this season*, forecasts matches, rankings and playoffs with honest uncertainty, and shows its evidence. Success: forecasts that are calibrated and beat transparent baselines on a fair, reproducible walk-forward test, explained well enough that a student can see why a robot is rated as it is.
 
 ## Positioning
 
@@ -34,7 +34,7 @@ Team ratings with uncertainty and reliability; match forecasts (scores, 80% inte
 
 ## Brand Commitments
 
-Name: "Overtime 1". Logo: original orbit-around-the-"1" mark (2026-11-20 brief). Direction: playful deep-space mission control; home is an explorable galaxy of teams; task-based navigation (Scout, Pick, Predict, Explore) with a ⌘K palette; one focused action per screen; no explanatory paragraphs on main screens (explanations behind "?" tips). Do not resemble match13.com (no sunset gradients, halftone art, centred pill nav, search hero, top-right season chip, entity-based nav or its tool names).
+Name: "Overtime 1". Logo: original orbit-around-the-"1" mark (2026-11-20 brief). Direction (2026-11-21 lane): sports-clock calm under pressure; home is Pick; three destinations (Pick, Teams, Settings) with a ⌘K palette; one primary action per screen; every screen serves a pick decision; no explanatory paragraphs on main screens (explanations behind "?" tips). Do not resemble match13.com (no sunset gradients, halftone art, centred pill nav, search hero, top-right season chip, entity-based nav or its tool names).
 
 ## Evidence on Hand
 

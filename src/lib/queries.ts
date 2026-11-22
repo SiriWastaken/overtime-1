@@ -324,6 +324,125 @@ export function eventAccuracy(eventKey: string) {
   return { n: rows.length, accuracy: decided ? correct / decided : null, brier: rows.length ? brier / rows.length : null };
 }
 
+// ---------------------------------------------------------------- discovery & analysis helpers
+
+export interface TeamMover {
+  key: string;
+  number: number;
+  nickname: string | null;
+  city: string | null;
+  state_prov: string | null;
+  country: string | null;
+  currentNet: number;
+  initialNet: number;
+  deltaNet: number;
+  currentRank: number;
+  matches: number;
+}
+
+export function biggestMovers(year: number, limit = 8): { gainers: TeamMover[]; decliners: TeamMover[] } {
+  const ratings = teamRatings(year).rows;
+  if (ratings.length === 0) return { gainers: [], decliners: [] };
+  const movers: TeamMover[] = [];
+
+  for (const r of ratings) {
+    if (r.rating.matches < 6) continue;
+    const hist = teamHistory(year, r.key);
+    if (hist.length < 4) continue;
+    const initial = hist[0].mean;
+    const current = r.rating.net;
+    const delta = current - initial;
+    movers.push({
+      key: r.key,
+      number: r.number,
+      nickname: r.nickname,
+      city: r.city,
+      state_prov: r.state_prov,
+      country: r.country,
+      currentNet: current,
+      initialNet: initial,
+      deltaNet: delta,
+      currentRank: r.rank,
+      matches: r.rating.matches,
+    });
+  }
+
+  movers.sort((a, b) => b.deltaNet - a.deltaNet);
+  const gainers = movers.slice(0, limit);
+  const decliners = [...movers].sort((a, b) => a.deltaNet - b.deltaNet).slice(0, limit);
+  return { gainers, decliners };
+}
+
+export function activeOrFeaturedEvents(year: number, limit = 6): (EventSummary & { topRating: number; meanRating: number })[] {
+  const evs = events(year);
+  const ratings = teamRatings(year).rows;
+  const ratingMap = new Map(ratings.map((r) => [r.key, r.rating.net]));
+
+  const enriched = evs.map((e) => {
+    const keys = eventTeamKeys(e.key);
+    const nets = keys.map((k) => ratingMap.get(k) ?? 0).sort((a, b) => b - a);
+    const topRating = nets.length ? nets[0] : 0;
+    const meanRating = nets.length ? nets.reduce((a, b) => a + b, 0) / nets.length : 0;
+    return { ...e, topRating, meanRating };
+  });
+
+  const live = enriched.filter((e) => e.status === 'live');
+  if (live.length >= limit) return live.slice(0, limit);
+  const recent = enriched.filter((e) => e.played > 0).sort((a, b) => b.end_date.localeCompare(a.end_date));
+  const seen = new Set(live.map((e) => e.key));
+  const combined = [...live];
+  for (const e of recent) {
+    if (combined.length >= limit) break;
+    if (!seen.has(e.key)) {
+      seen.add(e.key);
+      combined.push(e);
+    }
+  }
+  return combined;
+}
+
+export function similarTeams(year: number, targetKey: string, limit = 5): RatedTeam[] {
+  const { rows } = teamRatings(year);
+  const target = rows.find((r) => r.key === targetKey);
+  if (!target) return [];
+
+  const getVector = (r: TeamRating) => {
+    const comps = r.components;
+    return [
+      comps.auto?.mean ?? 0,
+      comps.teleop?.mean ?? 0,
+      comps.endgame?.mean ?? 0,
+      r.defense?.mean ?? 0,
+      r.fouls?.mean ?? 0,
+    ];
+  };
+
+  const vTarget = getVector(target.rating);
+  const scored = rows
+    .filter((r) => r.key !== targetKey && r.rating.matches >= 6)
+    .map((r) => {
+      const v = getVector(r.rating);
+      let distSq = 0;
+      for (let i = 0; i < vTarget.length; i++) {
+        distSq += (vTarget[i] - v[i]) ** 2;
+      }
+      return { team: r, dist: Math.sqrt(distSq) };
+    });
+
+  scored.sort((a, b) => a.dist - b.dist);
+  return scored.slice(0, limit).map((s) => s.team);
+}
+
+export function searchIndex(year: number) {
+  const { rows: teams } = teamRatings(year);
+  const evs = events(year);
+  return {
+    year,
+    teams: teams.map((t) => [t.number, t.nickname ?? '', t.city ?? '', t.rank]),
+    events: evs.map((e) => [e.key, e.name, e.city ?? '', e.status]),
+  };
+}
+
 /** Latest sync run per season, for the data-sources page. */
 export function latestSyncs() {
   return db()

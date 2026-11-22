@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 import { Barlow_Condensed, Geist, Geist_Mono } from 'next/font/google';
 import { Suspense } from 'react';
+import { Header } from '@/components/Header';
 import { Rail } from '@/components/Nav';
 import { Palette } from '@/components/Palette';
-import { SpaceBackground } from '@/components/space/SpaceBackground';
 import { TeamPeek } from '@/components/TeamPeek';
 import { Toaster } from '@/components/ui';
 import { defaultYear, seasons } from '@/lib/queries';
@@ -24,7 +24,7 @@ export const dynamic = 'force-dynamic';
 const CALM = `try{localStorage.getItem('ot:calm')==='1'&&document.documentElement.setAttribute('data-calm','')}catch(e){}`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const years = seasons().map((s) => s.year);
+  const years = seasons().filter((s) => s.modelled).map((s) => s.year); // a season without a model would open on an empty screen
   const year = defaultYear();
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable} ${display.variable}`} suppressHydrationWarning>
@@ -35,8 +35,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <a className="skip" href="#main">
           Skip to content
         </a>
-        <SpaceBackground />
         <Suspense>
+          <Header years={years} fallback={year} />
           <Rail fallback={year} />
           <Palette years={years} fallback={year} />
         </Suspense>

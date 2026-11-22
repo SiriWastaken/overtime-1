@@ -67,7 +67,7 @@ const median = (xs: number[]) => {
  * Build the evaluation context from the season pool. Uses common random numbers (fixed seed) so every robot is
  * scored against identical contexts and differences between robots are not Monte Carlo noise.
  */
-export function edgeContext(pool: NetEstimate[], noise: Noise, samples = 2048, seed = 1): EdgeContext | null {
+export function edgeContext(pool: NetEstimate[], noise: Noise, samples = 2048, seed = 1, partners: NetEstimate[] = []): EdgeContext | null {
   const eligible = pool.filter((p) => p.matches >= MIN_POOL_MATCHES && Number.isFinite(p.net) && Number.isFinite(p.gross));
   if (eligible.length < 12 || !(noise.marginNoiseSd > 0)) return null;
   const meanVar = eligible.reduce((a, p) => a + p.sd * p.sd, 0) / eligible.length;
@@ -76,7 +76,8 @@ export function edgeContext(pool: NetEstimate[], noise: Noise, samples = 2048, s
   const contexts = new Float64Array(samples);
   const gross = new Float64Array(samples);
   for (let k = 0; k < samples; k++) {
-    const [a, b, c, d, e] = [pick(), pick(), pick(), pick(), pick()];
+    // `partners` pins the alliance seats already filled (Fit: the lift of a robot given your alliance so far)
+    const [a, b, c, d, e] = [partners[0] ?? pick(), partners[1] ?? pick(), pick(), pick(), pick()];
     contexts[k] = a.net + b.net - c.net - d.net - e.net;
     gross[k] = a.gross + b.gross + c.gross + d.gross + e.gross + 2 * noise.offset;
   }

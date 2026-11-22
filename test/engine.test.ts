@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { EloEpa } from '../src/engine/baselines.ts';
 import { GaussianState } from '../src/engine/gaussian-state.ts';
 import { inferRules } from '../src/engine/rules.ts';
 import { seasonSpec } from '../src/engine/seasons.ts';
@@ -61,6 +62,55 @@ describe('GaussianState', () => {
     s.add('a', 0, 1);
     s.update({ idx: [0], coef: [1] }, 1, 1);
     assert.throws(() => s.resetPrior(0, 0, 1));
+  });
+});
+
+describe('EloEpa baseline', () => {
+  it('updates team ratings sequentially and predicts score margins', () => {
+    const elo = new EloEpa();
+    const m1: MatchRow = {
+      key: '2025test_qm1',
+      eventKey: '2025test',
+      year: 2025,
+      compLevel: 'qm',
+      setNumber: 1,
+      matchNumber: 1,
+      red: ['frc1', 'frc2', 'frc3'],
+      blue: ['frc4', 'frc5', 'frc6'],
+      redScore: 80,
+      blueScore: 40,
+      winner: 'red',
+      time: 100,
+      actualTime: 100,
+      predictedTime: 100,
+      postResultTime: 105,
+      breakdown: null,
+    };
+    assert.equal(elo.predict(m1), null); // no prior matches
+    elo.observe(m1);
+
+    const m2: MatchRow = {
+      key: '2025test_qm2',
+      eventKey: '2025test',
+      year: 2025,
+      compLevel: 'qm',
+      setNumber: 1,
+      matchNumber: 2,
+      red: ['frc1', 'frc2', 'frc3'],
+      blue: ['frc4', 'frc5', 'frc6'],
+      redScore: 70,
+      blueScore: 50,
+      winner: 'red',
+      time: 110,
+      actualTime: 110,
+      predictedTime: 110,
+      postResultTime: 115,
+      breakdown: null,
+    };
+    const f2 = elo.predict(m2);
+    assert.ok(f2 !== null);
+    assert.ok(f2.redMean > f2.blueMean, 'red alliance EPA should exceed blue after scoring 80 vs 40');
+    assert.ok(f2.redWinProb > 0.5, 'red win probability should exceed 50%');
   });
 });
 

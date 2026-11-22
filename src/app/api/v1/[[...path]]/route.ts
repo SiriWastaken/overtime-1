@@ -3,12 +3,13 @@
 import { MODEL_VERSION } from '@/engine/model';
 import { ENDPOINTS } from '@/lib/endpoints';
 import { seasonSpec } from '@/engine/seasons';
-import { seasonEdges } from '@/lib/edge';
+import { allianceFit, seasonEdges } from '@/lib/edge';
 import { adHocForecast, playoffAnalysis, rankingAnalysis, selectionAnalysis } from '@/lib/analysis';
 import {
   defaultYear,
   event,
   eventMatches,
+  eventTeamKeys,
   eventResource,
   eventTeamRatings,
   events,
@@ -20,6 +21,7 @@ import {
   teamHistory,
   teamMatches,
   teamMeta,
+  teamMetaMap,
   teamRating,
   teamRatings,
   validation,
@@ -107,7 +109,25 @@ function route(parts: string[], q: URLSearchParams): unknown {
   if (a === 'teams' && b) {
     const key = teamKey(b);
     const year = yearOf(q.get('year') ?? String(defaultYear()));
-    if (c === 'matches') return teamMatches(year, key);
+    if (c === 'matches') {
+      const ms = teamMatches(year, key);
+      if (q.get('brief') !== '1') return ms;
+      // ?brief=1: scores, result and the stored pre-match win chance only (no breakdowns or videos)
+      return ms.map((m) => ({
+        key: m.key,
+        eventKey: m.eventKey,
+        compLevel: m.compLevel,
+        setNumber: m.setNumber,
+        matchNumber: m.matchNumber,
+        red: m.red,
+        blue: m.blue,
+        redScore: m.redScore,
+        blueScore: m.blueScore,
+        winner: m.winner,
+        time: m.actualTime ?? m.time,
+        redWinProb: m.prediction?.forecast?.redWinProb ?? null,
+      }));
+    }
     const meta = teamMeta(key);
     const rating = teamRating(year, key);
     if (!meta && !rating) throw new HttpError(404, 'team not found');
@@ -159,6 +179,80 @@ function route(parts: string[], q: URLSearchParams): unknown {
     };
   }
   if (a === 'matches' && b) return need(match(b), 'match');
+  if (a === 'fit') {
+    const year = yearOf(q.get('year'));
+    const mine = list(q.get('mine'));
+    const taken = list(q.get('taken'));
+    if (mine.length > 3 || taken.length > 120) throw new HttpError(400, 'mine lists up to 3 teams, taken up to 120');
+    const ev = q.get('event');
+    const roster = ev ? eventTeamKeys(eventKeyOk(ev)) : undefined;
+    if (ev && !roster?.length) throw new HttpError(404, `no team list for event ${ev}`);
+    const r = need(allianceFit(year, mine, { roster, exclude: new Set(taken) }), `EDGE for ${year}`);
+    const meta = teamMetaMap([...mine, ...r.fits.map((f) => f.team)]);
+    const names = Object.fromEntries(mine.map((t) => [t, meta.get(t)?.nickname ?? null]));
+    return { year, event: ev, mine, names, winChance: r.winChance, unrated: r.unrated, fits: r.fits.map((f) => ({ ...f, number: Number(f.team.slice(3)), nickname: meta.get(f.team)?.nickname ?? null })) };
+  }
+  if (a === 'export') {
+    const year = yearOf(q.get('year') ?? String(defaultYear()));
+    const fmt = q.get('format') ?? 'csv';
+    if (b === 'teams') {
+      const { rows } = teamRatings(year, { limit: 10000 });
+      if (fmt === 'json') return rows;
+      const csvHeader = 'rank,number,nickname,city,state_prov,country,net,sd,auto,teleop,endgame,defense,fouls,matches\n';
+      const csvLines = rows.map((r) =>
+        [
+          r.rank,
+          r.number,
+          `"${(r.nickname ?? '').replace(/"/g, '""')}"`,
+          `"${(r.city ?? '').replace(/"/g, '""')}"`,
+          `"${(r.state_prov ?? '').replace(/"/g, '""')}"`,
+          `"${(r.country ?? '').replace(/"/g, '""')}"`,
+          r.rating.net.toFixed(2),
+          r.rating.total.sd.toFixed(2),
+          (r.rating.components.auto?.mean ?? 0).toFixed(2),
+          (r.rating.components.teleop?.mean ?? 0).toFixed(2),
+          (r.rating.components.endgame?.mean ?? 0).toFixed(2),
+          (r.rating.defense?.mean ?? 0).toFixed(2),
+          (r.rating.fouls?.mean ?? 0).toFixed(2),
+          r.rating.matches,
+        ].join(',')
+      ).join('\n');
+      return new Response(csvHeader + csvLines, {
+        headers: {
+          ...HEADERS,
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="overtime-${year}-teams.csv"`,
+        },
+      });
+    }
+    if (b === 'validation') {
+      const val = validation(year);
+      if (fmt === 'json') return val;
+      const csvHeader = 'year,model,label,split,n,scoreMae,scoreRmse,brier,logLoss,accuracy,cov80\n';
+      const csvLines = val.map((v) =>
+        [
+          year,
+          v.model,
+          `"${v.label.replace(/"/g, '""')}"`,
+          v.split,
+          v.metrics.n,
+          v.metrics.scoreMae.toFixed(2),
+          v.metrics.scoreRmse.toFixed(2),
+          v.metrics.brier.toFixed(4),
+          v.metrics.logLoss.toFixed(4),
+          (v.metrics.accuracy * 100).toFixed(1),
+          v.metrics.coverage ? (v.metrics.coverage.p80 * 100).toFixed(1) : '',
+        ].join(',')
+      ).join('\n');
+      return new Response(csvHeader + csvLines, {
+        headers: {
+          ...HEADERS,
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="overtime-${year}-validation.csv"`,
+        },
+      });
+    }
+  }
   if (a === 'predict') {
     const year = yearOf(q.get('year'));
     const red = list(q.get('red'));
@@ -175,7 +269,9 @@ function route(parts: string[], q: URLSearchParams): unknown {
 export async function GET(req: Request, ctx: { params: Promise<{ path?: string[] }> }) {
   try {
     const { path = [] } = await ctx.params;
-    return ok(route(path, new URL(req.url).searchParams));
+    const res = route(path, new URL(req.url).searchParams);
+    if (res instanceof Response) return res;
+    return ok(res);
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
     const message = e instanceof HttpError ? e.message : 'internal error';

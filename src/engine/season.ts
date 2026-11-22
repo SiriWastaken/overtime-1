@@ -1,7 +1,7 @@
 // Run one season end to end: walk-forward forecasts for every played match, evaluation of the model and the
 // baselines on an identical match set, and the final state used for live forecasts of unplayed matches.
 
-import { SeasonAverage, TeamAverage } from './baselines.ts';
+import { EloEpa, SeasonAverage, TeamAverage } from './baselines.ts';
 import { evaluate, type Metrics } from './metrics.ts';
 import { DEFAULT_OPTIONS, MODEL_VERSION, XptsModel, type ModelOptions, type XptsForecast } from './model.ts';
 import { walkForward, type Forecast, type Predictor } from './predictor.ts';
@@ -55,6 +55,7 @@ export function runSeason(raw: SeasonData, opts: Partial<ModelOptions> = {}, wit
     main,
     new SeasonAverage(),
     new TeamAverage(),
+    new EloEpa(),
     new XptsModel(data, { ...options, carry: true, drift: false, eta: 0, q: 0, defense: false }, totalOnlySpec(data.year), 'season_opr', 'Season ridge OPR (total score)'),
     new XptsModel(data, { ...options, carry: false, eta: 0, q: 0, defense: false }, totalOnlySpec(data.year), 'event_opr', 'Event-only ridge OPR (total score)'),
   ];
