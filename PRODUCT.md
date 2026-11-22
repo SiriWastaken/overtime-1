@@ -34,7 +34,7 @@ Team ratings with uncertainty and reliability; match forecasts (scores, 80% inte
 
 ## Brand Commitments
 
-Name: "Overtime 1". Logo: original orbit-around-the-"1" mark (2026-11-20 brief). Direction (2026-11-21 lane): sports-clock calm under pressure; home is Pick; three destinations (Pick, Teams, Settings) with a ⌘K palette; one primary action per screen; every screen serves a pick decision; no explanatory paragraphs on main screens (explanations behind "?" tips). Do not resemble match13.com (no sunset gradients, halftone art, centred pill nav, search hero, top-right season chip, entity-based nav or its tool names).
+Name: "Overtime 1". Logo: original orbit-around-the-"1" mark (2026-11-20 brief). Direction (2026-11-21, "Orrery" brief): a playful lab, a science-museum exhibit for FRC data; playful container, precise content; home is search-first with Today, movers, Model vs reality and a dice; four places (Home, Pick, Teams, Events) with a ⌘K palette; Pick (alliance selection) is its own tab; no explanatory paragraphs on main screens (explanations behind "?" tips). Do not resemble match13.com (no sunset gradients, halftone art, centred pill nav, search hero, top-right season chip, entity-based nav or its tool names).
 
 ## Evidence on Hand
 

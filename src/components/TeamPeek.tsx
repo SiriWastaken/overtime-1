@@ -147,8 +147,8 @@ export function TeamPeek() {
   };
   if (!target) return null;
   const num = target.team.slice(3);
-  // on Pick (home) the card's one job is to pick; everywhere else it builds your list
-  const onPick = typeof window !== 'undefined' && window.location.pathname === '/';
+  // on Pick the card's one job is to pick; everywhere else it builds your list
+  const onPick = typeof window !== 'undefined' && window.location.pathname === '/pick';
   const r = data?.rating;
   const ed = data?.edge;
   const place = data?.team ? [data.team.city, data.team.state_prov, data.team.country === 'USA' ? null : data.team.country].filter(Boolean).join(', ') : '';

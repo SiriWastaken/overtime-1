@@ -5,13 +5,15 @@ import { seasonEdges } from './edge.ts';
 import { modelRun, teamRatings } from './queries.ts';
 
 const SPARK = 12; // points kept per team for sparklines
-const TREND_SPAN = 10; // matches back for the trend
+export const TREND_SPAN = 10; // matches back for the trend
 
 export interface Form {
   /** Last SPARK post-match scoring means, oldest first. */
   spark: number[];
   /** Change in scoring over the last TREND_SPAN matches, in season-spread units (sd of team scoring). */
   trend: number;
+  /** The same change in points per match. */
+  delta: number;
 }
 
 /** Columnar so ~4000 teams stay small on the wire. */
@@ -54,7 +56,7 @@ export function seasonForm(year: number): Map<string, Form> {
       for (const [k, a] of by) {
         const last = a[a.length - 1];
         const prev = a[Math.max(0, a.length - 1 - TREND_SPAN)];
-        out.set(k, { spark: a.slice(-SPARK).map((v) => Math.round(v * 10) / 10), trend: (last - prev) / sd });
+        out.set(k, { spark: a.slice(-SPARK).map((v) => Math.round(v * 10) / 10), trend: (last - prev) / sd, delta: last - prev });
       }
       return out;
     }) ?? new Map()

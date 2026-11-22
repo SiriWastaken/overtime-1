@@ -16,10 +16,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       <div className="page-head">
         <div>
           <h1>
-            Instant Search <em>{year}</em>
+            Search <em>{year}</em>
           </h1>
           <p className="sub">
-            Sub-millisecond local search across all {index.teams.length.toLocaleString()} teams and {index.events.length} events.
+            {index.teams.length.toLocaleString()} teams and {index.events.length} events.
           </p>
         </div>
       </div>
@@ -28,6 +28,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
         year={year}
         teams={index.teams as [number, string, string, number][]}
         events={index.events as [string, string, string, string][]}
+        initialQ={(sp.q ?? '').slice(0, 60)}
       />
     </div>
   );

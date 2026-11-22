@@ -1,6 +1,7 @@
 // Read models for the UI and the public API. Everything comes from stored TBA data and stored model outputs;
 // nothing is invented when data is missing (callers render explicit empty states).
 
+import { seasonForm, TREND_SPAN } from './galaxy.ts';
 import type { XptsForecast, TeamRating, TeamContribution, ComponentRating } from '../engine/model.ts';
 import type { Metrics } from '../engine/metrics.ts';
 import type { RuleFits } from '../engine/rules.ts';
@@ -340,18 +341,13 @@ export interface TeamMover {
   matches: number;
 }
 
+/** Biggest movers: change in scoring over each team's last TREND_SPAN matches (one cached query, see seasonForm). */
 export function biggestMovers(year: number, limit = 8): { gainers: TeamMover[]; decliners: TeamMover[] } {
-  const ratings = teamRatings(year).rows;
-  if (ratings.length === 0) return { gainers: [], decliners: [] };
+  const form = seasonForm(year);
   const movers: TeamMover[] = [];
-
-  for (const r of ratings) {
-    if (r.rating.matches < 6) continue;
-    const hist = teamHistory(year, r.key);
-    if (hist.length < 4) continue;
-    const initial = hist[0].mean;
-    const current = r.rating.net;
-    const delta = current - initial;
+  for (const r of teamRatings(year).rows) {
+    const f = form.get(r.key);
+    if (!f || r.rating.matches < 2 * TREND_SPAN) continue; // need a full window before and inside the trend
     movers.push({
       key: r.key,
       number: r.number,
@@ -359,46 +355,28 @@ export function biggestMovers(year: number, limit = 8): { gainers: TeamMover[]; 
       city: r.city,
       state_prov: r.state_prov,
       country: r.country,
-      currentNet: current,
-      initialNet: initial,
-      deltaNet: delta,
+      currentNet: r.rating.net,
+      initialNet: r.rating.net - f.delta,
+      deltaNet: f.delta,
       currentRank: r.rank,
       matches: r.rating.matches,
     });
   }
-
-  movers.sort((a, b) => b.deltaNet - a.deltaNet);
-  const gainers = movers.slice(0, limit);
-  const decliners = [...movers].sort((a, b) => a.deltaNet - b.deltaNet).slice(0, limit);
-  return { gainers, decliners };
+  const up = [...movers].sort((a, b) => b.deltaNet - a.deltaNet);
+  return { gainers: up.slice(0, limit), decliners: up.reverse().slice(0, limit) };
 }
 
+/** Live events first, then the most recently played. Rosters are read only for the events returned. */
 export function activeOrFeaturedEvents(year: number, limit = 6): (EventSummary & { topRating: number; meanRating: number })[] {
   const evs = events(year);
-  const ratings = teamRatings(year).rows;
-  const ratingMap = new Map(ratings.map((r) => [r.key, r.rating.net]));
-
-  const enriched = evs.map((e) => {
-    const keys = eventTeamKeys(e.key);
-    const nets = keys.map((k) => ratingMap.get(k) ?? 0).sort((a, b) => b - a);
-    const topRating = nets.length ? nets[0] : 0;
-    const meanRating = nets.length ? nets.reduce((a, b) => a + b, 0) / nets.length : 0;
-    return { ...e, topRating, meanRating };
+  const live = evs.filter((e) => e.status === 'live');
+  const recent = evs.filter((e) => e.status !== 'live' && e.played > 0).sort((a, b) => b.end_date.localeCompare(a.end_date));
+  const chosen = [...live, ...recent].slice(0, limit);
+  const net = new Map(teamRatings(year).rows.map((r) => [r.key, r.rating.net]));
+  return chosen.map((e) => {
+    const nets = eventTeamKeys(e.key).map((k) => net.get(k) ?? 0);
+    return { ...e, topRating: nets.length ? Math.max(...nets) : 0, meanRating: nets.length ? nets.reduce((x, y) => x + y, 0) / nets.length : 0 };
   });
-
-  const live = enriched.filter((e) => e.status === 'live');
-  if (live.length >= limit) return live.slice(0, limit);
-  const recent = enriched.filter((e) => e.played > 0).sort((a, b) => b.end_date.localeCompare(a.end_date));
-  const seen = new Set(live.map((e) => e.key));
-  const combined = [...live];
-  for (const e of recent) {
-    if (combined.length >= limit) break;
-    if (!seen.has(e.key)) {
-      seen.add(e.key);
-      combined.push(e);
-    }
-  }
-  return combined;
 }
 
 export function similarTeams(year: number, targetKey: string, limit = 5): RatedTeam[] {

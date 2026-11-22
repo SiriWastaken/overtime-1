@@ -212,7 +212,7 @@ export function PickBoard({ year, event, mine, field }: { year: number; event: {
       <div className="pick-main">
         <header className="pick-head">
           <h1>Alliance selection</h1>
-          <EventSwitch year={year} event={event} onChange={(k) => router.push(`/?year=${year}${k ? `&event=${k}` : ''}`)} />
+          <EventSwitch year={year} event={event} onChange={(k) => router.push(`/pick?year=${year}${k ? `&event=${k}` : ''}`)} />
           {ends === null && open >= 0 ? (
             <button type="button" className="ghost clock-start" onClick={startClock}>
               Start draft clock

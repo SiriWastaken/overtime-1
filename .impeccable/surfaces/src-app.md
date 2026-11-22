@@ -5,13 +5,13 @@ primary_target: "src/app"
 related_targets: []
 ---
 
-Scope: whole app shell and all routes. Home `/` is Pick (alliance selection); Teams (map + list); Settings in the palette; events, matches, analytics, methodology, developers are demoted links. Mode: Operate.
-Audience/job: a scouting lead at alliance selection (2–3 minutes, phone/tablet, noisy). Constraints: real TBA data only, honest empty states.
+Scope: whole app shell and all routes. Home `/` is search-first; Pick `/pick` is alliance selection; Teams, Events; Compare, Lab, Track record, Data & API are linked from home and ⌘K. Mode: Operate (home leans Persuade for first-timers).
+Audience/job: scouting leads at events (phones, fast) and curious students and analysts at a desk. Constraints: real TBA data only, honest empty states, no unverified claims.
 
 ## Direction contract
-FORM: a draft board under a clock, flat near-black.
-THESIS: "Who should we pick next, and why?" answered in one panel: best fit, its Fit number, one Pick button.
-OWN-WORLD: near-black, neutral greys, one cyan accent; green/red-orange only for direction (Fit/EDGE) and the late clock; no background decoration; Barlow Condensed numbers + Geist UI; five type sizes.
-FIRST VIEWPORT: "Alliance selection" + event switch; three seats; win chance; best fit with its button; the list begins. Desktop: the team map on the right.
-SIGNATURE: the draft clock (taken/declined, live re-rank, overtime count-up); Fit that shrinks as your alliance gets stronger.
-RAISES: calm mode + reduced motion; ≥44px targets; zero paragraphs on main screens.
+THESIS: a science-museum exhibit for FRC data: chunky, bright container; exact, tabular, uncertain-on-purpose numbers inside. Refuses the dark analytics dashboard and the centred search hero.
+OWN-WORLD: paper ground, white cards, 2px ink outlines, hard offset shadows, sunshine primary, blue/pink/mint/coral data fills outlined in ink; Bricolage Grotesque 800 display, Geist tabular numbers; designed dark mode in cream.
+STORY: a visitor finds a team or event in one step, sees one hero number with its range and why, and can watch the model replay a real match.
+FIRST VIEWPORT: left "Find a team or event" at 56px with the search; right the tilted dice sticker with the mascot; below, the Today/Latest strip of sticker cards.
+FORM: brief-pinned ("Orrery: PLAYFUL LAB"); seed: none (unavailable).
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.

@@ -1,3 +1,4 @@
+import { Mascot } from './Mascot';
 import Link from 'next/link';
 import { pct, teamNum } from '@/lib/format';
 import type { TeamMeta } from '@/lib/queries';
@@ -72,8 +73,9 @@ export function Spark({ values, trend = 0 }: { values?: number[]; trend?: number
 export function NoData({ year }: { year: number | null }) {
   return (
     <div className="empty">
-      <strong>Clock hasn’t started.</strong>
-      Sync {year ?? 'a season'} first: <code>npm run update -- {year ?? new Date().getFullYear()}</code>
+      <Mascot mood="think" />
+      <strong>No data for {year ?? 'this season'} yet.</strong>
+      Sync it first: <code>npm run update -- {year ?? new Date().getFullYear()}</code>
     </div>
   );
 }

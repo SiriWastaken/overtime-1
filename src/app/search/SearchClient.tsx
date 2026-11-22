@@ -10,8 +10,8 @@ interface SearchClientProps {
   events: [string, string, string, string][]; // [key, name, city, status]
 }
 
-export function SearchClient({ year, teams, events }: SearchClientProps) {
-  const [q, setQ] = useState('');
+export function SearchClient({ year, teams, events, initialQ = '' }: SearchClientProps & { initialQ?: string }) {
+  const [q, setQ] = useState(initialQ);
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();

@@ -5,7 +5,7 @@ const config: NextConfig = {
   // Retired screens. Query strings (year, event) carry over.
   async redirects() {
     return [
-      { source: '/pick', destination: '/lab?tab=alliance', permanent: true }, // Alliance selection is now in Lab
+      { source: '/lab', has: [{ type: 'query', key: 'tab', value: 'alliance' }], destination: '/pick', permanent: true }, // Pick is its own tab again
       { source: '/predict', destination: '/compare', permanent: true },
       { source: '/scout', destination: '/teams', permanent: true },
       { source: '/directory', destination: '/teams', permanent: true },

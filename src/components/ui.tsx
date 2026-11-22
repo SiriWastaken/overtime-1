@@ -32,6 +32,17 @@ export function Logo({ simulating }: { simulating?: boolean }) {
   );
 }
 
+export function useDark() {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const sync = () => setOn(document.documentElement.getAttribute('data-theme') === 'dark');
+    sync();
+    window.addEventListener('ot:theme', sync);
+    return () => window.removeEventListener('ot:theme', sync);
+  }, []);
+  return on;
+}
+
 export function useCalm() {
   const [on, setOn] = useState(false);
   useEffect(() => {

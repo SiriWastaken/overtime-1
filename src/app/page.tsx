@@ -1,296 +1,143 @@
 import Link from 'next/link';
-import { HomeFunSandbox } from '@/components/HomeFunSandbox';
-import { Tip, Why, UncertaintyFuzzBar } from '@/components/ui';
-import { Avatar } from '@/components/bits';
+import { Avatar, NoData } from '@/components/bits';
+import { Dice } from '@/components/Dice';
+import { Mascot } from '@/components/Mascot';
+import { MonteCarlo, type McMatch } from '@/components/MonteCarlo';
+import { Why } from '@/components/ui';
 import { seasonSpec } from '@/engine/seasons';
-import { dateRange, location, matchLabel, pct, pts } from '@/lib/format';
-import {
-  activeOrFeaturedEvents,
-  biggestMovers,
-  defaultYear,
-  modelRun,
-  recentMatches,
-  resolveYear,
-  teamRatings,
-} from '@/lib/queries';
+import { dateRange, location, matchLabel } from '@/lib/format';
+import { TREND_SPAN } from '@/lib/galaxy';
+import { activeOrFeaturedEvents, biggestMovers, events, modelRun, recentMatches, resolveYear, teamRatings } from '@/lib/queries';
 
 export const metadata = {
-  title: 'Overtime 1 · FRC Stats, Verified Models & Data',
-  description: 'Fast, beautiful FRC stats and predictive modeling. Ridge regression, Bayesian shrinkage, Monte Carlo simulations, and open walk-forward backtests.',
+  title: { absolute: 'Overtime 1 · FRC data you can poke at' },
+  description: 'Find any FRC team or event. Ratings with honest uncertainty, alliance picks and match forecasts from this season’s matches.',
 };
 
-export default async function HomePage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
-  const sp = await searchParams;
-  const year = resolveYear(sp.year) ?? defaultYear() ?? 2026;
-  const run = modelRun(year);
-  const spec = seasonSpec(year);
+const STATUS = { live: 'Live', completed: 'Done', upcoming: 'Soon' } as const;
 
-  // Queries
-  const { total, rows: topTeams } = teamRatings(year, { limit: 10 });
-  const featuredEvents = activeOrFeaturedEvents(year, 4);
-  const { gainers, decliners } = biggestMovers(year, 6);
-  const recentPlayed = recentMatches(year, 'completed', 1);
-  const modelOfTheDayMatch = recentPlayed[0] ?? null;
+export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
+  const year = resolveYear((await searchParams).year);
+  if (!year || !modelRun(year)) return <NoData year={year} />;
+  const spec = seasonSpec(year);
+  const rated = teamRatings(year).rows;
+  const today = activeOrFeaturedEvents(year, 6);
+  const anyLive = today.some((e) => e.status === 'live');
+  const { gainers } = biggestMovers(year, 6);
+  const evName = new Map(events(year).map((e) => [e.key, e.short_name || e.name]));
+  const mc: McMatch[] = recentMatches(year, 'completed', 40)
+    .filter((m) => m.prediction?.forecast && m.redScore !== null && m.blueScore !== null && m.redScore >= 0)
+    .slice(0, 12)
+    .map((m) => ({
+      key: m.key,
+      label: matchLabel(m),
+      event: evName.get(m.eventKey) ?? m.eventKey,
+      red: m.red.map((t) => Number(t.slice(3))),
+      blue: m.blue.map((t) => Number(t.slice(3))),
+      margin: m.prediction!.forecast.margin,
+      marginSd: m.prediction!.forecast.marginSd,
+      redWinProb: m.prediction!.forecast.redWinProb,
+      redScore: m.redScore!,
+      blueScore: m.blueScore!,
+    }));
 
   return (
-    <div className="home-container">
-      {/* Search-First Hero */}
-      <section className="hero-search-section">
-        <div className="hero-badge">
-          <span className="live-dot" />
-          <span>{year} Season · {spec.game} · {total.toLocaleString()} Rated Teams</span>
+    <div className="home-lab">
+      <section className="hl-top">
+        <div className="hl-find">
+          <h1>Find a team or event</h1>
+          <p className="hl-sub">
+            {year} {spec.game} · {rated.length.toLocaleString()} teams rated from this season’s matches only
+          </p>
+          <form action="/search" role="search" className="hl-search">
+            <input type="hidden" name="year" value={year} />
+            <label className="sr-only" htmlFor="hl-q">
+              Team number, name, event or city
+            </label>
+            <input id="hl-q" type="search" name="q" placeholder="254, Cheesy Poofs, Silicon Valley…" autoComplete="off" enterKeyHint="search" />
+            <button type="submit">Find</button>
+          </form>
         </div>
-        <h1 className="hero-title">
-          FRC analytics, verified models, zero fluff.
-        </h1>
-        <p className="hero-sub">
-          Expected contribution (xPts), Bayesian shrinkage, Monte Carlo draft and bracket simulations. Every number has a why.
-        </p>
-
-        <form action="/teams" method="GET" className="hero-search-form" role="search">
-          <input type="hidden" name="year" value={year} />
-          <div className="hero-input-wrap">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              type="search"
-              name="q"
-              placeholder="Search team number, name, event code, or city... (e.g. 1690, Cheesy, Silicon Valley)"
-              autoComplete="off"
-              className="hero-search-input"
-            />
-            <button type="submit" className="button primary hero-search-btn">
-              Explore
-            </button>
-          </div>
-        </form>
-
-        <div className="hero-quick-chips">
-          <span className="muted">Quick jump:</span>
-          {topTeams.slice(0, 5).map((t) => (
-            <Link key={t.key} href={`/teams/${t.number}?year=${year}`} className="chip-link">
-              #{t.number} {t.nickname ?? ''}
-            </Link>
-          ))}
-          <Link href={`/compare?year=${year}`} className="chip-link ghost">
-            ⇄ Compare teams
-          </Link>
-          <Link href={`/lab?year=${year}`} className="chip-link ghost">
-            ⚡ Lab &amp; Simulator
-          </Link>
+        <div className="hl-dice sticker">
+          <Mascot />
+          <p>Not sure where to start? Let chance pick.</p>
+          <Dice year={year} teams={rated.map((r) => r.number)} />
         </div>
       </section>
 
-      {/* Featured / Live Events */}
-      <section className="section" aria-labelledby="home-events-head">
-        <div className="section-head">
-          <div>
-            <h2 id="home-events-head">Active &amp; Featured Events</h2>
-            <p className="sub">Live simulation of final rankings, match schedules, and frozen predictions.</p>
-          </div>
-          <Link href={`/events?year=${year}`} className="button ghost">
-            All {year} Events →
-          </Link>
+      <section aria-labelledby="today-h">
+        <div className="hl-head">
+          <h2 id="today-h">{anyLive ? 'Today' : 'Latest events'}</h2>
+          <Link href={`/events?year=${year}`}>All events</Link>
         </div>
-
-        <div className="events-grid">
-          {featuredEvents.map((ev) => (
-            <Link key={ev.key} href={`/events/${ev.key}?year=${year}`} className="event-card">
-              <div className="event-card-top">
-                <span className={`status-pill ${ev.status}`}>{ev.status.toUpperCase()}</span>
-                <span className="event-date muted">{dateRange(ev.start_date, ev.end_date)}</span>
-              </div>
-              <h3 className="event-card-title">{ev.name}</h3>
-              <div className="event-card-meta muted">
-                <span>{location(ev)}</span>
-                {ev.district_name ? <span> · {ev.district_name}</span> : null}
-              </div>
-              <div className="event-card-stats">
-                <div className="stat-unit">
-                  <span className="stat-val">{ev.teams}</span>
-                  <span className="stat-lbl">teams</span>
-                </div>
-                <div className="stat-unit">
-                  <span className="stat-val">{ev.played}/{ev.scheduled}</span>
-                  <span className="stat-lbl">matches</span>
-                </div>
-                <div className="stat-unit">
-                  <span className="stat-val">{ev.topRating > 0 ? `+${ev.topRating.toFixed(1)}` : '—'}</span>
-                  <span className="stat-lbl">top xPts</span>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* Signature Interactive Element: Monte Carlo Rain Sandbox */}
-      <HomeFunSandbox year={year} />
-
-      {/* Two-Column: Biggest Movers + Model of the Day */}
-      <div className="home-grid-columns">
-        {/* Biggest Movers */}
-        <section className="section mover-section" aria-labelledby="movers-head">
-          <div className="section-head">
-            <div>
-              <h2 id="movers-head">Biggest Movers</h2>
-              <p className="sub">Teams with the largest in-season rating climb.</p>
-            </div>
-            <Why
-              title="Rating Movement (Delta Net)"
-              method="Evaluates the change in posterior net contribution from early season event posteriors to current standing. Measures adaptation and mechanical iteration."
-              inputs={['Rating history timeline', 'Bayesian carry drift', 'Match innovations']}
-            />
-          </div>
-
-          <div className="table-wrap">
-            <table className="agate">
-              <thead>
-                <tr>
-                  <th>Team</th>
-                  <th className="n">Rank</th>
-                  <th className="n">xPts</th>
-                  <th className="n">Season Gain</th>
-                </tr>
-              </thead>
-              <tbody>
-                {gainers.slice(0, 5).map((m) => (
-                  <tr key={m.key}>
-                    <td>
-                      <Link href={`/teams/${m.number}?year=${year}`} className="team-link">
-                        <Avatar team={m.number} year={year} size={20} />
-                        <span className="strong">{m.number}</span>
-                        <span className="muted hide-s">{m.nickname ?? ''}</span>
-                      </Link>
-                    </td>
-                    <td className="n">#{m.currentRank}</td>
-                    <td className="n">+{m.currentNet.toFixed(1)}</td>
-                    <td className="n pos strong">+{m.deltaNet.toFixed(1)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {/* Model of the Day */}
-        <section className="section model-of-day-section" aria-labelledby="motd-head">
-          <div className="section-head">
-            <div>
-              <h2 id="motd-head">Model of the Day</h2>
-              <p className="sub">Frozen pre-match forecast vs reality.</p>
-            </div>
-            {modelOfTheDayMatch?.prediction?.forecast ? (
-              <Why
-                title="Frozen Match Forecast"
-                value={`${(modelOfTheDayMatch.prediction.forecast.redWinProb * 100).toFixed(0)}% Red Win`}
-                method="Forecast frozen at match start using exact GaussianState prior to kickoff. Evaluates additive components, defense suppression, and heteroscedastic noise."
-                inputs={[
-                  `Red Alliance: ${modelOfTheDayMatch.red.join(', ')}`,
-                  `Blue Alliance: ${modelOfTheDayMatch.blue.join(', ')}`,
-                  `Predicted margin: ${modelOfTheDayMatch.prediction.forecast.margin.toFixed(1)} pts`,
-                ]}
-              />
-            ) : null}
-          </div>
-
-          {modelOfTheDayMatch && modelOfTheDayMatch.prediction?.forecast ? (
-            <div className="motd-card">
-              <div className="motd-head">
-                <span className="motd-label">MATCH SPOTLIGHT</span>
-                <Link href={`/matches/${modelOfTheDayMatch.key}`} className="motd-link">
-                  {matchLabel(modelOfTheDayMatch)} at {modelOfTheDayMatch.eventKey} →
+        {today.length ? (
+          <ul className="hl-today">
+            {today.map((e) => (
+              <li key={e.key}>
+                <Link href={`/events/${e.key}`} className="ev-card">
+                  <span className={`chip st-${e.status}`}>{STATUS[e.status]}</span>
+                  <b className="ev-name">{e.short_name || e.name}</b>
+                  <span className="ev-meta">
+                    {dateRange(e.start_date, e.end_date)} · {location(e)}
+                  </span>
+                  <span className="ev-stats">
+                    {e.teams} teams · {e.played} of {e.scheduled} played
+                  </span>
                 </Link>
-              </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="empty">
+            <Mascot mood="think" />
+            <strong>No events yet.</strong> The robots are stretching.
+          </div>
+        )}
+      </section>
 
-              <div className="motd-scoreboard">
-                <div className={`motd-side red${modelOfTheDayMatch.winner === 'red' ? ' winner' : ''}`}>
-                  <span className="side-tag">RED ALLIANCE</span>
-                  <div className="side-teams">
-                    {modelOfTheDayMatch.red.map((t) => (
-                      <span key={t}>{t.slice(3)}</span>
-                    ))}
-                  </div>
-                  <div className="side-score-box">
-                    <span className="pred-score">Pred: {modelOfTheDayMatch.prediction.forecast.red.mean.toFixed(0)}</span>
-                    <span className="actual-score">{modelOfTheDayMatch.redScore ?? '—'}</span>
-                  </div>
-                </div>
-
-                <div className="motd-vs">
-                  <span className="vs-winprob">
-                    {(modelOfTheDayMatch.prediction.forecast.redWinProb * 100).toFixed(0)}%
+      <div className="hl-grid">
+        {mc.length ? <MonteCarlo matches={mc} /> : null}
+        <section className="card hl-movers" aria-labelledby="movers-h">
+          <div className="hl-head">
+            <h2 id="movers-h">Biggest movers</h2>
+            <Why
+              title="Biggest movers"
+              value={`Last ${TREND_SPAN} matches`}
+              inputs={['Each team’s rating after every match this season']}
+              method={`Change in points added per match over the team’s last ${TREND_SPAN} matches. Teams need ${2 * TREND_SPAN} matches to qualify.`}
+              uncertainty="A ten-match change includes noise; a jump of a few points can be luck."
+            />
+          </div>
+          {gainers.length ? (
+            <ol className="movers">
+              {gainers.map((m) => (
+                <li key={m.key} data-peek={m.key} data-year={year}>
+                  <Avatar team={m.number} year={year} />
+                  <span className="team-num">{m.number}</span>
+                  <span className="nm">{m.nickname ?? ''}</span>
+                  <span className="mv-n">
+                    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
+                      <path d="M5 1 9.5 9h-9z" fill="var(--d-mint)" stroke="var(--ink)" strokeWidth="1.5" strokeLinejoin="round" />
+                    </svg>
+                    +{m.deltaNet.toFixed(1)}
+                    <small> pts</small>
                   </span>
-                  <span className="muted vs-text">win prob</span>
-                </div>
-
-                <div className={`motd-side blue${modelOfTheDayMatch.winner === 'blue' ? ' winner' : ''}`}>
-                  <span className="side-tag">BLUE ALLIANCE</span>
-                  <div className="side-teams">
-                    {modelOfTheDayMatch.blue.map((t) => (
-                      <span key={t}>{t.slice(3)}</span>
-                    ))}
-                  </div>
-                  <div className="side-score-box">
-                    <span className="pred-score">Pred: {modelOfTheDayMatch.prediction.forecast.blue.mean.toFixed(0)}</span>
-                    <span className="actual-score">{modelOfTheDayMatch.blueScore ?? '—'}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="motd-insight">
-                <strong>What the model saw:</strong> Red held an advantage of{' '}
-                {Math.abs(modelOfTheDayMatch.prediction.forecast.margin).toFixed(1)} expected points.
-                {modelOfTheDayMatch.winner ? (
-                  <span>
-                    {' '}Result:{' '}
-                    <strong>{modelOfTheDayMatch.winner.toUpperCase()}</strong> won ({modelOfTheDayMatch.redScore}–{modelOfTheDayMatch.blueScore}).
-                  </span>
-                ) : null}
-              </div>
-            </div>
+                </li>
+              ))}
+            </ol>
           ) : (
-            <div className="empty-panel">
-              <span className="muted">No featured match with frozen forecast available for this season yet.</span>
-            </div>
+            <p className="muted">Nobody has played enough matches to move yet.</p>
           )}
         </section>
       </div>
 
-      {/* Verified Model Highlights */}
-      <section className="section trust-section">
-        <div className="trust-grid">
-          <div className="trust-card">
-            <h3>Verified Walk-Forward</h3>
-            <p className="muted">
-              Over 52,000 matches scored with frozen pre-match cutoff timestamps. No future leakage.
-            </p>
-            <Link href="/accuracy" className="link">
-              View public backtests →
-            </Link>
-          </div>
-          <div className="trust-card">
-            <h3>Bayesian Shrinkage</h3>
-            <p className="muted">
-              Latent component models shrink small samples toward the mean, avoiding fluke single-match spikes.
-            </p>
-            <Link href="/accuracy#methodology" className="link">
-              Read methodology →
-            </Link>
-          </div>
-          <div className="trust-card">
-            <h3>Fast &amp; Static-First</h3>
-            <p className="muted">
-              Precomputed typed data and streaming Web Workers ensure 60fps animations and sub-1s load times.
-            </p>
-            <Link href="/data" className="link">
-              Download datasets &amp; API →
-            </Link>
-          </div>
-        </div>
-      </section>
+      <nav className="hl-more" aria-label="More">
+        <Link href={`/pick?year=${year}`}>Pick your alliance</Link>
+        <Link href={`/compare?year=${year}`}>Compare teams</Link>
+        <Link href={`/lab?year=${year}`}>Lab</Link>
+        <Link href={`/accuracy?year=${year}`}>Track record</Link>
+        <Link href="/data">Data & API</Link>
+      </nav>
     </div>
   );
 }

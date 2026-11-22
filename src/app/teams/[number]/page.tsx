@@ -4,7 +4,8 @@ import { Avatar, Empty, RangeBar, TeamLink, WinBar } from '@/components/bits';
 import { Histogram, RatingChart } from '@/components/charts';
 import { phaseRating, PHASE_COLS } from '@/components/RatingsTable';
 import { EdgeGauge, edgePts, hot } from '@/components/edge';
-import { MyTeamButton, PicklistButton, Tip, Why, UncertaintyFuzzBar } from '@/components/ui';
+import { Celebrate } from '@/components/Celebrate';
+import { MyTeamButton, PicklistButton, Tip } from '@/components/ui';
 import { seasonSpec } from '@/engine/seasons';
 import { seasonEdges } from '@/lib/edge';
 import { wilson } from '@/engine/stats';
@@ -34,6 +35,10 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
   const se = r ? seasonEdges(year) : null;
   const edge = se?.byTeam.get(key) ?? null;
   const similar = r ? similarTeams(year, key, 5) : [];
+  // a real milestone: the deciding final of the team's latest event went its way
+  const lastEv = [...evs].reverse().find((e) => matches.some((mm) => mm.eventKey === e.key));
+  const lastFinal = matches.filter((mm) => mm.eventKey === lastEv?.key && mm.compLevel === 'f' && mm.winner).sort((p, q) => (p.time ?? 0) - (q.time ?? 0)).at(-1);
+  const wonLast = lastFinal && lastEv && (lastFinal.winner === 'red' ? lastFinal.red : lastFinal.blue).includes(key) ? lastEv : null;
 
   return (
     <>
@@ -65,70 +70,51 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
         </Empty>
       ) : (
         <>
-          <div className="tiles">
-            {edge ? (
-              <div className="tile hero-tile">
-                <small>
-                  EDGE · win-chance points vs a median robot
-                  <Tip label="What is EDGE?">How much this team raises an alliance’s win chance, compared with a median robot in the same seat.</Tip>
-                </small>
-                <EdgeGauge edge={edge.edge} lo={edge.lo80} hi={edge.hi80} matches={edge.matches} size="lg" />
-                <span className="range-line">
-                  80%: {edgePts(edge.lo80)} to {edgePts(edge.hi80)}
-                </span>
-              </div>
-            ) : null}
-            <div className="tile">
-              <b>
-                #{(edge?.rank ?? rated!.rank).toLocaleString()}
-              </b>
-              <small>Rank of {rated!.total.toLocaleString()}</small>
+          <section className="hero-team" aria-label={`Team ${number} rating`}>
+            <div className="ht-number">
+              {edge ? (
+                <>
+                  <span className="ht-label">EDGE · win-chance points vs a median robot</span>
+                  <b className={`ht-big${edge.edge < 0 ? ' neg' : ''}`}>{edgePts(edge.edge)}</b>
+                  <EdgeGauge edge={edge.edge} lo={edge.lo80} hi={edge.hi80} matches={edge.matches} size="lg" />
+                  <span className="ht-range">
+                    80% sure it sits between {edgePts(edge.lo80)} and {edgePts(edge.hi80)} · #{edge.rank.toLocaleString()} of {rated!.total.toLocaleString()}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="ht-label">Points added per match</span>
+                  <b className="ht-big">{r.net.toFixed(1)}</b>
+                  <span className="ht-range">Too few matches for EDGE yet.</span>
+                </>
+              )}
+              {wonLast ? <Celebrate id={`${key}-${wonLast.key}`}>Won {wonLast.short_name || wonLast.name}. Nobody panic.</Celebrate> : null}
             </div>
-            <div className="tile">
-              <b>+{r.net.toFixed(1)}</b>
-              <small>
-                xPts Net Added / Match
-                <Why
-                  title={`Team ${number} xPts Rating`}
-                  value={`+${r.net.toFixed(1)} (±${r.total.sd.toFixed(1)} SD)`}
-                  inputs={[
-                    `Matches played: ${r.matches}`,
-                    `Events attended: ${r.events.length}`,
-                    `Auto contribution: +${(r.components.auto?.mean ?? 0).toFixed(1)} pts`,
-                    `Teleop contribution: +${(r.components.teleop?.mean ?? 0).toFixed(1)} pts`,
-                    `Endgame contribution: +${(r.components.endgame?.mean ?? 0).toFixed(1)} pts`,
-                    `Defense suppression: +${(r.defense?.mean ?? 0).toFixed(1)} pts`,
-                    `Fouls conceded: -${(r.fouls?.mean ?? 0).toFixed(1)} pts`,
-                  ]}
-                  method="Bayesian Gaussian state estimation (exact partner covariance within events, drift-adjusted carry between events). Shrunk toward season component averages."
-                  uncertainty={`Posterior SD: ±${r.total.sd.toFixed(1)} pts · 80% credible interval: [${(r.net - 1.28 * r.total.sd).toFixed(1)}, ${(r.net + 1.28 * r.total.sd).toFixed(1)}]`}
-                  sampleSize={r.matches}
-                />
-              </small>
-              <div style={{ marginTop: 6 }}>
-                <UncertaintyFuzzBar value={r.net} sd={r.total.sd} min={0} max={60} label={`Team ${number} xPts`} />
-              </div>
-            </div>
-            <div className="tile">
-              <b>
-                {r.matches}
-              </b>
-              <small>
-                Matches · {r.events.length} event{r.events.length === 1 ? '' : 's'}
-              </small>
-            </div>
-            <div className="tile">
-              <b>
-                {r.volatility.toFixed(2)}
-              </b>
-              <small>
-                Volatility
-                <Tip label="What is volatility?" align="right">
-                  1.00 = as predictable as expected. Higher = more surprises.
-                </Tip>
-              </small>
-            </div>
-          </div>
+            <aside className="ht-why card" aria-labelledby="why-h">
+              <h2 id="why-h">Why this number</h2>
+              <dl>
+                <div>
+                  <dt>Inputs</dt>
+                  <dd>
+                    {r.matches} matches at {r.events.length} event{r.events.length === 1 ? '' : 's'}, this season only. Adds {r.net.toFixed(1)} points a match (auto {phaseRating(year, r, 'auto').mean.toFixed(1)}, teleop{' '}
+                    {phaseRating(year, r, 'teleop').mean.toFixed(1)}, endgame {phaseRating(year, r, 'endgame').mean.toFixed(1)}
+                    {r.defense ? `, defense ${r.defense.mean.toFixed(1)}` : ''}), gives away {(r.fouls?.mean ?? 0).toFixed(1)} in fouls.
+                  </dd>
+                </div>
+                <div>
+                  <dt>Method</dt>
+                  <dd>Each match updates every robot’s estimate, splitting alliance points by what partners usually score. EDGE turns points into win chance against realistic partners and opponents.</dd>
+                </div>
+                <div>
+                  <dt>Uncertainty</dt>
+                  <dd>
+                    ±{r.total.sd.toFixed(1)} points a match.{edge && edge.matches < 8 ? ' Early: fewer than 8 matches.' : ''} This number is 80% sure of itself.
+                  </dd>
+                </div>
+              </dl>
+              <Link href="/methodology">How it works</Link>
+            </aside>
+          </section>
 
           <div className="grid-2">
             <section className="section">
@@ -266,7 +252,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
       {similar.length ? (
         <section className="section" aria-labelledby="similar-head">
           <div className="section-head">
-            <h2 id="similar-head">Similar Teams ({year})</h2>
+            <h2 id="similar-head">Plays a lot like</h2>
             <Tip label="How similar teams are found">Closest statistical profiles based on normalized auto, teleop, endgame, and defense contributions.</Tip>
           </div>
           <div className="similar-teams-grid">
@@ -274,10 +260,10 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
               <Link key={st.key} href={`/teams/${st.number}?year=${year}`} className="similar-team-card">
                 <Avatar team={st.number} year={year} size={28} />
                 <div className="st-info">
-                  <span className="st-num">#{st.number}</span>
+                  <span className="st-num">{st.number}</span>
                   <span className="st-name muted">{st.nickname ?? ''}</span>
                 </div>
-                <span className="st-xpts">+{st.rating.net.toFixed(1)}</span>
+                <span className="st-xpts">{st.rating.net.toFixed(1)} pts</span>
               </Link>
             ))}
           </div>

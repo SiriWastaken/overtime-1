@@ -2,10 +2,10 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { getMyTeam, openPalette, peek, setCalm, setMyTeam } from '@/lib/fx';
+import { getMyTeam, openPalette, peek, setCalm, setMyTeam, setTheme } from '@/lib/fx';
 import { Avatar } from './bits';
 import { EdgeGauge } from './edge';
-import { useCalm } from './ui';
+import { useCalm, useDark } from './ui';
 
 interface TeamHit {
   key: string;
@@ -30,7 +30,7 @@ interface Item {
   run: () => void;
 }
 
-export const SEASONAL = ['/', '/teams', '/events', '/analytics', '/compare', '/lab', '/accuracy', '/data'];
+export const SEASONAL = ['/', '/pick', '/teams', '/events', '/analytics', '/compare', '/lab', '/accuracy', '/data'];
 
 /** ⌘K / Ctrl+K (or "/") from anywhere: teams, events, places, settings (season, calm mode, my team). On the Teams map, a team flies the camera; elsewhere it opens the team card. */
 export function Palette({ years, fallback }: { years: number[]; fallback: number | null }) {
@@ -39,6 +39,7 @@ export function Palette({ years, fallback }: { years: number[]; fallback: number
   const params = useSearchParams();
   const year = Number(params.get('year')) || fallback;
   const calm = useCalm();
+  const dark = useDark();
   const dlg = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const listId = useId();
@@ -124,12 +125,14 @@ export function Palette({ years, fallback }: { years: number[]; fallback: number
     }));
     const mine = typeof document !== 'undefined' ? getMyTeam() : null;
     const more: Item[] = [
-      { id: 'events', group: 'More', label: 'Events', run: go(`/events${y}`) },
-      { id: 'accuracy', group: 'More', label: 'Track record', hint: 'How often the model is right', run: go(`/analytics${y}`) },
+      { id: 'compare', group: 'More', label: 'Compare teams', run: go(`/compare${y}`) },
+      { id: 'lab', group: 'More', label: 'Lab', hint: 'Simulator and season explorer', run: go(`/lab${y}`) },
+      { id: 'accuracy', group: 'More', label: 'Track record', hint: 'How often the model is right', run: go(`/accuracy${y}`) },
       { id: 'how', group: 'More', label: 'How it works', run: go('/methodology') },
-      { id: 'api', group: 'More', label: 'Data & API', run: go('/developers') },
+      { id: 'api', group: 'More', label: 'Data & API', run: go('/data') },
     ];
     const settings: Item[] = [
+      { id: 'dark', group: 'Settings', label: 'Dark mode', hint: dark ? 'On' : 'Off', keep: true, run: () => setTheme(!dark) },
       { id: 'calm', group: 'Settings', label: 'Calm mode', hint: calm ? 'On' : 'Off', keep: true, run: () => setCalm(!calm) },
       ...(mine ? [{ id: 'unpin', group: 'Settings', label: `My team · ${mine.slice(3)}`, hint: 'Unpin', run: () => setMyTeam(null) }] : []),
       ...seasons,
@@ -138,10 +141,13 @@ export function Palette({ years, fallback }: { years: number[]; fallback: number
     const t0 = q.trim().toLowerCase();
     if (mode === 'settings') return t0 ? settings.filter((i) => `${i.group} ${i.label}`.toLowerCase().includes(t0)) : settings;
     const places: Item[] = [
-      { id: 'pick', group: 'Go', label: 'Alliance selection', hint: 'Pick', run: go(`/${y}`) },
-      { id: 'teams', group: 'Go', label: 'Teams', hint: 'Map and list', run: go(`/teams${y}`) },
+      { id: 'home', group: 'Go', label: 'Home', run: go(`/${y}`) },
+      { id: 'pick', group: 'Go', label: 'Pick', hint: 'Alliance selection', run: go(`/pick${y}`) },
+      { id: 'teams', group: 'Go', label: 'Teams', run: go(`/teams${y}`) },
+      { id: 'events', group: 'Go', label: 'Events', run: go(`/events${y}`) },
       ...(mine ? [{ id: 'mine', group: 'Go', label: `My team · ${mine.slice(3)}`, run: () => peek(mine, year ?? 0) }] : []),
-      { id: 'settings', group: 'Go', label: 'Settings', hint: 'Season, calm mode', run: () => requestAnimationFrame(() => openPalette('settings')) },
+      { id: 'settings', group: 'Go', label: 'Settings', hint: 'Season, dark, calm', run: () => requestAnimationFrame(() => openPalette('settings')) },
+      ...more,
     ];
     const term = q.trim().toLowerCase();
     if (!term) return places;
@@ -157,7 +163,7 @@ export function Palette({ years, fallback }: { years: number[]; fallback: number
     const events: Item[] = hits.events.map((e) => ({ id: e.key, group: 'Events', label: e.name, hint: e.status === 'live' ? 'Live' : undefined, run: go(`/events/${e.key}`) }));
     const match = (i: Item) => i.label.toLowerCase().includes(term);
     return [...teams, ...events, ...places.filter(match), ...settings.filter(match)];
-  }, [q, hits, mode, years, year, path, params, router, calm]);
+  }, [q, hits, mode, years, year, path, params, router, calm, dark]);
 
   const choose = (i: Item | undefined) => {
     if (!i) return;

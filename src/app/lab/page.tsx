@@ -1,6 +1,4 @@
-import { cookies } from 'next/headers';
 import Link from 'next/link';
-import { PickBoard } from '@/components/PickBoard';
 import { Galaxy } from '@/components/Galaxy';
 import { seasonSpec } from '@/engine/seasons';
 import { galaxy } from '@/lib/galaxy';
@@ -10,19 +8,18 @@ import { SeasonExplorer } from './SeasonExplorer';
 
 export const metadata = {
   title: 'Lab & Simulator · Overtime 1',
-  description: 'Monte Carlo schedule simulations, Alliance Selection copilot, 2D Season Explorer, and what-if model analysis.',
+  description: 'Monte Carlo match simulations and the season explorer.',
 };
 
 const LAB_TABS = [
   { id: 'simulator', label: 'Monte Carlo Simulator' },
-  { id: 'alliance', label: 'Alliance Selection' },
   { id: 'explorer', label: 'Season Explorer' },
 ] as const;
 
 export default async function LabPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const sp = await searchParams;
   const year = resolveYear(sp.year) ?? defaultYear() ?? 2026;
-  const activeTab = (sp.tab as 'simulator' | 'alliance' | 'explorer') || 'simulator';
+  const activeTab = (sp.tab as 'simulator' | 'explorer') || 'simulator';
   const run = modelRun(year);
 
   // Load team ratings for Simulator & Explorer
@@ -45,11 +42,6 @@ export default async function LabPage({ searchParams }: { searchParams: Promise<
     defense: r.rating.defense?.mean ?? 0,
   }));
 
-  // Alliance selection setup
-  const ev = sp.event && /^\d{4}[a-z0-9]+$/.test(sp.event) ? event(sp.event) : null;
-  const myKey = (await cookies()).get('ot_myteam')?.value ?? null;
-  const mine = myKey && /^frc\d{1,5}$/.test(myKey) ? myKey : null;
-
   return (
     <div className="page-container lab-page">
       <div className="page-head">
@@ -68,7 +60,7 @@ export default async function LabPage({ searchParams }: { searchParams: Promise<
         {LAB_TABS.map((t) => (
           <Link
             key={t.id}
-            href={`/lab?year=${year}&tab=${t.id}${sp.event ? `&event=${sp.event}` : ''}`}
+            href={`/lab?year=${year}&tab=${t.id}`}
             aria-current={activeTab === t.id ? 'page' : undefined}
           >
             {t.label}
@@ -79,17 +71,6 @@ export default async function LabPage({ searchParams }: { searchParams: Promise<
       {/* Tab 1: Monte Carlo Simulator */}
       {activeTab === 'simulator' ? (
         <LabSimulator year={year} initialTeams={initialTeams} />
-      ) : null}
-
-      {/* Tab 2: Alliance Selection Mode */}
-      {activeTab === 'alliance' ? (
-        <div className="lab-alliance-wrap">
-          <PickBoard
-            year={year}
-            event={ev ? { key: ev.key, name: ev.name } : null}
-            mine={mine}
-          />
-        </div>
       ) : null}
 
       {/* Tab 3: Season Explorer */}

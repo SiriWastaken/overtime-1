@@ -2,80 +2,65 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { openPalette, setCalm } from '@/lib/fx';
+import { openPalette, setCalm, setTheme } from '@/lib/fx';
+import { ICONS, PLACES, usePlaces } from './Nav';
 import { SEASONAL } from './Palette';
-import { Logo, useCalm } from './ui';
+import { Logo, useCalm, useDark } from './ui';
 
+/** The one top bar: logo, the places (desktop), search, season, dark and Calm. Phones keep logo, search and Settings. */
 export function Header({ years, fallback }: { years: number[]; fallback: number | null }) {
   const router = useRouter();
   const path = usePathname();
   const sp = useSearchParams();
-  const yearParam = sp.get('year');
-  const currentYear = Number(yearParam) || fallback || 2026;
+  const year = Number(sp.get('year')) || fallback || years[0];
   const calm = useCalm();
+  const dark = useDark();
+  const { href, on } = usePlaces();
 
-  const handleYearChange = (newYear: number) => {
-    const params = new URLSearchParams(sp.toString());
-    params.set('year', String(newYear));
-    // If current route is seasonal, stay on route with new year parameter
-    const base = SEASONAL.some((s) => (s === '/' ? path === '/' : path.startsWith(s))) ? path : '/';
-    router.push(`${base}?${params.toString()}`);
+  const pickYear = (y: number) => {
+    const p = new URLSearchParams(sp.toString());
+    p.set('year', String(y));
+    const scoped = SEASONAL.some((s) => (s === '/' ? path === '/' : path.startsWith(s))) || path.startsWith('/teams/');
+    router.push(`${scoped ? path : '/'}?${p}`);
   };
 
   return (
-    <header className="top-header" role="banner">
-      <div className="header-left">
-        <Link href={`/?year=${currentYear}`} className="header-brand" aria-label="Overtime 1">
-          <Logo />
-          <span className="brand-name">Overtime 1</span>
-        </Link>
-        <span className="brand-tagline hide-m">FRC Data &amp; Verified Models</span>
-      </div>
-
-      <div className="header-center">
-        <button
-          type="button"
-          className="header-search-box"
-          onClick={() => openPalette()}
-          aria-label="Search teams and events (Shortcut: ⌘K)"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <span className="search-placeholder">Find team, event, match...</span>
-          <kbd className="search-kbd hide-s">⌘K</kbd>
-        </button>
-      </div>
-
-      <div className="header-right">
-        <div className="season-selector" title="Select FRC season">
-          <label htmlFor="season-picker" className="sr-only">Season</label>
-          <select
-            id="season-picker"
-            className="season-select"
-            value={currentYear}
-            onChange={(e) => handleYearChange(Number(e.target.value))}
-            aria-label="Season selection"
-          >
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {y} Season
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <button
-          type="button"
-          className={`calm-toggle-btn${calm ? ' active' : ''}`}
-          onClick={() => setCalm(!calm)}
-          title={calm ? 'Calm mode is ON (no motion). Tap to toggle.' : 'Calm mode is OFF. Tap for reduced motion.'}
-          aria-label="Toggle calm mode"
-        >
-          {calm ? 'Calm: On' : 'Calm: Off'}
-        </button>
-      </div>
+    <header className="bar">
+      <Link href={href('/')} className="bar-brand" aria-label="Overtime 1, home">
+        <Logo />
+        <span>Overtime 1</span>
+      </Link>
+      <nav className="bar-places" aria-label="Primary">
+        {PLACES.slice(1).map(([h, label]) => (
+          <Link key={h} href={href(h)} aria-current={on(h) ? 'page' : undefined}>
+            {label}
+          </Link>
+        ))}
+      </nav>
+      <button type="button" className="bar-search" onClick={() => openPalette()} aria-keyshortcuts="Meta+K Control+K /">
+        {ICONS.search}
+        <span>Find a team or event</span>
+        <kbd aria-hidden>⌘K</kbd>
+      </button>
+      <label className="sr-only" htmlFor="season">
+        Season
+      </label>
+      <select id="season" className="bar-season" value={year ?? ''} onChange={(e) => pickYear(Number(e.target.value))}>
+        {years.map((y) => (
+          <option key={y} value={y}>
+            {y}
+          </option>
+        ))}
+      </select>
+      <button type="button" className="bar-toggle" aria-pressed={dark} onClick={() => setTheme(!dark)}>
+        Dark
+      </button>
+      <button type="button" className="bar-toggle" aria-pressed={calm} onClick={() => setCalm(!calm)}>
+        Calm
+      </button>
+      <button type="button" className="bar-more" onClick={() => openPalette('settings')} aria-label="Settings: season, dark, calm">
+        {ICONS.settings}
+      </button>
     </header>
   );
 }

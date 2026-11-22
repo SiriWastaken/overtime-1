@@ -15,8 +15,8 @@ function ticks(lo: number, hi: number, n = 5): number[] {
 const HatchDef = ({ id }: { id: string }) => (
   <defs>
     <pattern id={id} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <rect width="4" height="4" fill="rgba(255,255,255,0.04)" />
-      <line x1="0" y1="0" x2="0" y2="4" stroke="rgba(255,255,255,0.22)" strokeWidth="1" />
+      <rect width="4" height="4" fill="var(--accent-weak)" />
+      <line x1="0" y1="0" x2="0" y2="4" stroke="var(--line-2)" strokeWidth="1" />
     </pattern>
   </defs>
 );
@@ -28,11 +28,32 @@ export interface SeriesPoint {
   event: string;
 }
 
-/** Rating progression: mean line with a hatched 80% band; events separated by labelled ticks. */
+/** A hand-drawn note: a slightly bowed leader line with an arrowhead, from the label to the point it explains. */
+function Note({ px, py, nx, ny, text, anchor }: { px: number; py: number; nx: number; ny: number; text: string; anchor: 'start' | 'end' }) {
+  const bow = (ny < py ? -1 : 1) * 10;
+  const mx = (px + nx) / 2 + bow;
+  const my = (py + ny) / 2 - bow / 2;
+  const ang = Math.atan2(py - my, px - mx);
+  const tip = (off: number) => `${px - 7 * Math.cos(ang + off)},${py - 7 * Math.sin(ang + off)}`;
+  return (
+    <g className="note" aria-hidden>
+      <path d={`M${nx},${ny + (ny < py ? 4 : -12)} Q${mx},${my} ${px - 5 * Math.cos(ang)},${py - 5 * Math.sin(ang)}`} />
+      <path d={`M${tip(0.45)} L${px},${py} L${tip(-0.45)}`} />
+      <text x={nx} y={ny} textAnchor={anchor}>
+        {text}
+      </text>
+    </g>
+  );
+}
+
+/**
+ * Rating progression: a 3px line with a hatched 80% band; events separated by labelled ticks; the season high and the
+ * biggest single-event climb annotated in the margin. A table under the chart carries the same numbers.
+ */
 export function RatingChart({ points, yMax, yLabel = 'Points added per match' }: { points: SeriesPoint[]; yMax?: number; yLabel?: string }) {
-  if (points.length < 2) return <p className="muted">Not enough matches for a progression chart.</p>;
-  const H = 220;
-  const m = { l: 44, r: 12, t: 12, b: 34 };
+  if (points.length < 2) return <p className="muted">Not enough matches for a progression chart yet. The robots are stretching.</p>;
+  const H = 240;
+  const m = { l: 44, r: 12, t: 36, b: 34 };
   const lo = Math.min(0, ...points.map((p) => p.mean - 1.28 * p.sd));
   const hi = yMax ?? Math.max(...points.map((p) => p.mean + 1.28 * p.sd));
   const x = (i: number) => m.l + (i / (points.length - 1)) * (W - m.l - m.r);
@@ -40,39 +61,97 @@ export function RatingChart({ points, yMax, yLabel = 'Points added per match' }:
   const band = points.map((p, i) => `${x(i)},${y(p.mean + 1.28 * p.sd)}`).join(' ') + ' ' + [...points].reverse().map((p, k) => `${x(points.length - 1 - k)},${y(p.mean - 1.28 * p.sd)}`).join(' ');
   const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i)},${y(p.mean)}`).join(' ');
   const breaks = points.map((p, i) => (i === 0 || p.event !== points[i - 1].event ? i : -1)).filter((i) => i >= 0);
+  // per event: first index, last index
+  const spans = breaks.map((b, k) => ({ event: points[b].event, first: b, last: (breaks[k + 1] ?? points.length) - 1 }));
+  const peak = points.reduce((best, p, i) => (p.mean > points[best].mean ? i : best), 0);
+  // biggest climb across one event: its last estimate minus the estimate going in
+  const climb = spans
+    .map((sp) => ({ ...sp, gain: points[sp.last].mean - points[Math.max(0, sp.first - 1)].mean }))
+    .reduce<{ event: string; last: number; gain: number } | null>((b, c) => (c.gain > (b?.gain ?? 4) ? c : b), null); // under 4 points is not a story
+  const side = (i: number) => (x(i) > W / 2 ? 'end' : 'start');
+  const shift = (i: number) => (side(i) === 'end' ? -40 : 40);
   return (
-    <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Rating progression with 80% uncertainty band">
-      <HatchDef id="rc-hatch" />
-      <g className="grid">
-        {ticks(lo, hi).map((v) => (
-          <line key={v} x1={m.l} x2={W - m.r} y1={y(v)} y2={y(v)} />
-        ))}
-      </g>
-      <polygon points={band} fill="url(#rc-hatch)" opacity="0.9" />
-      <path d={line} fill="none" stroke="var(--chart-ink)" strokeWidth="1.75" />
-      {breaks.map((i) => (
-        <g key={i}>
-          <line x1={x(i)} x2={x(i)} y1={m.t} y2={H - m.b} stroke="var(--text-3)" strokeDasharray="2 3" />
-          <text x={x(i) + 3} y={H - m.b + 14} className="label">
-            {points[i].event.slice(4).toUpperCase()}
-          </text>
+    <>
+      <svg className="chart rating-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Points added per match after each of ${points.length} matches, with an 80% band. Season high ${points[peak].mean.toFixed(1)}.`}>
+        <HatchDef id="rc-hatch" />
+        <g className="grid">
+          {ticks(lo, hi).map((v) => (
+            <line key={v} x1={m.l} x2={W - m.r} y1={y(v)} y2={y(v)} />
+          ))}
         </g>
-      ))}
-      <g className="axis">
-        <line x1={m.l} x2={m.l} y1={m.t} y2={H - m.b} />
-        {ticks(lo, hi).map((v) => (
-          <text key={v} x={m.l - 6} y={y(v) + 3} textAnchor="end">
-            {v}
-          </text>
+        <polygon points={band} fill="url(#rc-hatch)" />
+        <path className="draw" d={line} pathLength={1} fill="none" stroke="var(--chart-ink)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        {breaks.map((i) => (
+          <g key={i}>
+            <line x1={x(i)} x2={x(i)} y1={m.t} y2={H - m.b} stroke="var(--line-2)" strokeDasharray="2 3" />
+            <text x={x(i) + 3} y={H - m.b + 14} className="label">
+              {points[i].event.slice(4).toUpperCase()}
+            </text>
+          </g>
         ))}
-      </g>
-      <text x={m.l} y={H - 4} className="label">
-        Matches played →
-      </text>
-      <text transform={`translate(10 ${m.t + (H - m.t - m.b) / 2}) rotate(-90)`} textAnchor="middle" className="label">
-        {yLabel}
-      </text>
-    </svg>
+        <circle cx={x(peak)} cy={y(points[peak].mean)} r="5" className="peak" />
+        <Note px={x(peak)} py={y(points[peak].mean) - 7} nx={x(peak) + shift(peak)} ny={14} anchor={side(peak)} text={`Season high: ${points[peak].mean.toFixed(1)}`} />
+        {climb && climb.last !== peak ? (
+          <Note
+            px={x(climb.last)}
+            py={y(points[climb.last].mean) + 7}
+            nx={x(climb.last) + shift(climb.last)}
+            ny={Math.min(H - m.b - 8, y(points[climb.last].mean) + 46)}
+            anchor={side(climb.last)}
+            text={`Climbed ${climb.gain.toFixed(0)} at ${climb.event.slice(4).toUpperCase()}`}
+          />
+        ) : null}
+        <g className="axis">
+          <line x1={m.l} x2={m.l} y1={m.t} y2={H - m.b} />
+          {ticks(lo, hi).map((v) => (
+            <text key={v} x={m.l - 6} y={y(v) + 3} textAnchor="end">
+              {v}
+            </text>
+          ))}
+        </g>
+        <text x={m.l} y={H - 4} className="label">
+          Matches played →
+        </text>
+        <text transform={`translate(10 ${m.t + (H - m.t - m.b) / 2}) rotate(-90)`} textAnchor="middle" className="label">
+          {yLabel}
+        </text>
+      </svg>
+      <details className="chart-table">
+        <summary>As a table</summary>
+        <table className="agate">
+          <thead>
+            <tr>
+              <th scope="col">Event</th>
+              <th scope="col" className="n">
+                Matches
+              </th>
+              <th scope="col" className="n">
+                In
+              </th>
+              <th scope="col" className="n">
+                Out
+              </th>
+              <th scope="col" className="n">
+                80% range out
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {spans.map((sp) => (
+              <tr key={sp.first}>
+                <td>{sp.event.slice(4).toUpperCase()}</td>
+                <td className="n">{sp.last - sp.first + 1}</td>
+                <td className="n">{points[sp.first].mean.toFixed(1)}</td>
+                <td className="n">{points[sp.last].mean.toFixed(1)}</td>
+                <td className="n">
+                  {(points[sp.last].mean - 1.28 * points[sp.last].sd).toFixed(1)} to {(points[sp.last].mean + 1.28 * points[sp.last].sd).toFixed(1)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+    </>
   );
 }
 

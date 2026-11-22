@@ -1,7 +1,10 @@
+import { Mascot } from '@/components/Mascot';
+
 export default function Loading() {
   return (
     <div className="state" role="status">
-      <p className="muted">Warming up…</p>
+      <Mascot mood="think" size={72} />
+      <p className="muted">Crunching the numbers…</p>
     </div>
   );
 }

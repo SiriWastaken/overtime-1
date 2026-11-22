@@ -2,17 +2,23 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { openPalette } from '@/lib/fx';
 import { SEASONAL } from './Palette';
-import { Logo } from './ui';
 
-const I = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.75, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const;
+const I = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const;
 
-const ICONS = {
+export const ICONS = {
   home: (
     <svg {...I}>
       <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
       <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
+  ),
+  pick: (
+    <svg {...I}>
+      <path d="M12 4.5 5 18h14z" strokeDasharray="2.2 2.4" />
+      <circle cx="12" cy="4.5" r="2.2" fill="currentColor" />
+      <circle cx="5" cy="18" r="2.2" fill="currentColor" />
+      <circle cx="19" cy="18" r="2.2" fill="currentColor" />
     </svg>
   ),
   teams: (
@@ -31,34 +37,6 @@ const ICONS = {
       <line x1="3" y1="10" x2="21" y2="10" />
     </svg>
   ),
-  compare: (
-    <svg {...I}>
-      <path d="M16 3h5v5" />
-      <path d="M8 21H3v-5" />
-      <path d="M21 3l-7 7" />
-      <path d="M3 21l7-7" />
-    </svg>
-  ),
-  lab: (
-    <svg {...I}>
-      <path d="M10 2v7.5L5.2 19.1A2 2 0 0 0 7 22h10a2 2 0 0 0 1.8-2.9L14 9.5V2" />
-      <path d="M8.5 2h7" />
-      <path d="M7 16h10" />
-    </svg>
-  ),
-  accuracy: (
-    <svg {...I}>
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-      <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
-  ),
-  data: (
-    <svg {...I}>
-      <ellipse cx="12" cy="5" rx="9" ry="3" />
-      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
-      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-    </svg>
-  ),
   search: (
     <svg {...I}>
       <circle cx="11" cy="11" r="8" />
@@ -74,52 +52,33 @@ const ICONS = {
   ),
 };
 
-/** Primary navigation: Teams, Events, Compare, Lab, Accuracy, Data, Search. */
-export function Rail({ fallback }: { fallback: number | null }) {
+export const PLACES = [
+  ['/', 'Home', 'home'],
+  ['/pick', 'Pick', 'pick'],
+  ['/teams', 'Teams', 'teams'],
+  ['/events', 'Events', 'events'],
+] as const;
+
+/** Keeps ?year= on seasonal links, marks the current place. Shared by the top bar and the phone tabs. */
+export function usePlaces() {
   const path = usePathname();
   const yp = useSearchParams().get('year');
-  const year = Number(yp) || fallback;
   const href = (h: string) => (yp && SEASONAL.includes(h) ? `${h}?year=${yp}` : h);
   const on = (h: string) => (h === '/' ? path === '/' : path.startsWith(h));
+  return { href, on };
+}
 
-  const item = (h: string, label: string, icon: React.ReactNode) => (
-    <Link href={href(h)} className="rail-item" aria-current={on(h) ? 'page' : undefined}>
-      {icon}
-      <span>{label}</span>
-    </Link>
-  );
-
+/** Phones: a bottom tab bar with the four places. Desktop uses the top bar's links. */
+export function Tabs() {
+  const { href, on } = usePlaces();
   return (
-    <nav className="rail" aria-label="Primary navigation">
-      <Link href={href('/')} className="rail-logo" aria-label="Overtime 1 Home">
-        <Logo />
-      </Link>
-      {item('/', 'Home', ICONS.home)}
-      {item('/teams', 'Teams', ICONS.teams)}
-      {item('/events', 'Events', ICONS.events)}
-      {item('/compare', 'Compare', ICONS.compare)}
-      {item('/lab', 'Lab', ICONS.lab)}
-      {item('/accuracy', 'Accuracy', ICONS.accuracy)}
-      {item('/data', 'Data', ICONS.data)}
-      <span className="rail-gap" aria-hidden />
-      <button
-        type="button"
-        className="rail-item search-btn"
-        onClick={() => openPalette()}
-        aria-label="Search teams and events (⌘K)"
-      >
-        {ICONS.search}
-        <span>Search</span>
-      </button>
-      <button
-        type="button"
-        className="rail-item"
-        onClick={() => openPalette('settings')}
-        aria-label={`Settings. Season ${year ?? 'none'}`}
-      >
-        {ICONS.settings}
-        <span>Settings</span>
-      </button>
+    <nav className="dock" aria-label="Primary">
+      {PLACES.map(([h, label, icon]) => (
+        <Link key={h} href={href(h)} className="dock-item" aria-current={on(h) ? 'page' : undefined}>
+          {ICONS[icon]}
+          <span>{label}</span>
+        </Link>
+      ))}
     </nav>
   );
 }

@@ -132,7 +132,8 @@ export function Galaxy({
 
     // the medians: the only chart furniture
     const [mx, my] = worldToScreen(50, 50);
-    ctx.strokeStyle = "rgba(255,255,255,.1)";
+    ctx.strokeStyle = TEXT;
+    ctx.globalAlpha = 0.15;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(Math.round(mx) + 0.5, 0);
@@ -140,6 +141,7 @@ export function Galaxy({
     ctx.moveTo(0, Math.round(my) + 0.5);
     ctx.lineTo(w, Math.round(my) + 0.5);
     ctx.stroke();
+    ctx.globalAlpha = 1;
     ctx.textAlign = "left";
 
     // zoomed out: density hexes, binned in screen space
@@ -163,7 +165,8 @@ export function Galaxy({
         const [col, row] = key.split(",").map(Number);
         const cx = col * hw + (row & 1 ? hw / 2 : 0);
         const cy = row * 1.5 * R;
-        ctx.fillStyle = `rgba(200,214,228,${(0.04 + 0.42 * (n / top) ** 0.7).toFixed(3)})`;
+        ctx.fillStyle = TEXT;
+        ctx.globalAlpha = (1 - detail) * (0.06 + 0.5 * (n / top) ** 0.7);
         ctx.beginPath();
         for (let s = 0; s < 6; s++) {
           const a = (Math.PI / 3) * s + Math.PI / 6;
@@ -183,7 +186,8 @@ export function Galaxy({
         const [X, Y] = toScreen(i);
         if (X < -10 || X > w + 10 || Y < -10 || Y > h + 10) continue;
         const g = Math.max(0, Math.min(1, data.e[i]! / eMax));
-        ctx.fillStyle = `rgba(236,238,241,${(0.25 + 0.75 * g).toFixed(2)})`;
+        ctx.fillStyle = TEXT;
+        ctx.globalAlpha = detail * (0.25 + 0.75 * g);
         ctx.beginPath();
         ctx.arc(X, Y, (1.2 + g * 2.8) * zr, 0, Math.PI * 2);
         ctx.fill();
@@ -277,6 +281,11 @@ export function Galaxy({
   const redraw = useCallback(() => {
     if (!raf.current) raf.current = requestAnimationFrame(draw);
   }, [draw]);
+  // canvas colours come from the theme tokens: repaint when the theme flips
+  useEffect(() => {
+    window.addEventListener("ot:theme", redraw);
+    return () => window.removeEventListener("ot:theme", redraw);
+  }, [redraw]);
 
   const zoomAt = useCallback(
     (sxp: number, syp: number, f: number) => {

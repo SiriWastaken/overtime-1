@@ -14,6 +14,15 @@ export function setCalm(on: boolean) {
   window.dispatchEvent(new Event('ot:calm'));
 }
 
+export function setTheme(dark: boolean) {
+  if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+  else document.documentElement.removeAttribute('data-theme');
+  try {
+    localStorage.setItem('ot:theme', dark ? 'dark' : 'light');
+  } catch {}
+  window.dispatchEvent(new Event('ot:theme'));
+}
+
 /** Open the command palette (optionally straight to the season list). */
 export const openPalette = (mode?: 'settings') => window.dispatchEvent(new CustomEvent('ot:palette', { detail: mode }));
 
